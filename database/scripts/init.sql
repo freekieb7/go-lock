@@ -1,24 +1,18 @@
-CREATE TABLE IF NOT EXISTS client (
+CREATE TABLE IF NOT EXISTS tbl_client (
     id TEXT PRIMARY KEY,
     secret TEXT NOT NULL,
     name TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS client_redirect (
+CREATE TABLE IF NOT EXISTS tbl_client_callback (
     id TEXT PRIMARY KEY,
     client_id TEXT NOT NULL,
-    redirect_uri TEXT NOT NULL,
-    FOREIGN KEY(client_id) REFERENCES client(id) ON DELETE CASCADE
+    uri TEXT NOT NULL,
+    FOREIGN KEY(client_id) REFERENCES tbl_client(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS account (
+CREATE TABLE IF NOT EXISTS tbl_user (
     id TEXT PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL
 );
-
-
--- INSERT INTO example_table (name) VALUES ('Test UserName');
--- INSERT INTO example_table (name) VALUES ('Mark Silva');
--- INSERT INTO example_table (name) VALUES ('Hector Kamara');
--- INSERT INTO example_table (name) VALUES ('Greg Anthony');

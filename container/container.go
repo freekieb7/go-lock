@@ -23,6 +23,7 @@ type Container struct {
 func New() *Container {
 	// Data providers
 	db := database.New()
+
 	sessionStore := session.New()
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
@@ -32,12 +33,13 @@ func New() *Container {
 
 	// Repositories
 	clientRepository := repository.NewClientRepository(db.Conn())
+	userRepository := repository.NewUserRepository(db.Conn())
 
 	// Controllers
 	homeController := controller.NewHomeController()
-	clientController := controller.NewClientController(db)
-	userController := controller.NewUserController()
-	authenticationController := controller.NewAuthenticationController(sessionStore)
+	clientController := controller.NewClientController(clientRepository)
+	userController := controller.NewUserController(userRepository)
+	authenticationController := controller.NewAuthenticationController(sessionStore, userRepository)
 	oauthController := controller.NewOAuthController(sessionStore, clientRepository, redisClient)
 
 	engine := html.New("./view", ".html")

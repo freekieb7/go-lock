@@ -1,7 +1,9 @@
 package model
 
+import "github.com/google/uuid"
+
 type Client struct {
-	ID     string
+	ID     uuid.UUID
 	Name   string
 	Secret string
 }

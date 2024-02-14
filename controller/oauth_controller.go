@@ -101,7 +101,7 @@ func (controller *oauthController) ShowAuthorize(c fiber.Ctx) error {
 
 	// Redirect uri check
 	redirectExists := false
-	redirectList, err := controller.clientRepository.GetClientRedirectList(clientId)
+	redirectList, err := controller.clientRepository.GetClientCallbackList(clientId)
 
 	if err != nil {
 		log.Println(err)
@@ -146,7 +146,12 @@ func (controller *oauthController) ProcessAuthorize(c fiber.Ctx) error {
 	authorizationCode := random.String(10)
 
 	// Use authorization code for later usage during token fetching
-	controller.redisClient.Set(context.Background(), "authorization_code", authorizationCode, time.Second)
+	res := controller.redisClient.Set(context.Background(), "authorization_code", authorizationCode, time.Hour)
+
+	if res.Err() != nil {
+		log.Println(res.Err())
+		return c.SendStatus(500)
+	}
 
 	return c.Redirect().
 		Status(http.StatusFound).
@@ -166,7 +171,12 @@ func (controller *oauthController) GenerateToken(c fiber.Ctx) error {
 
 	// Validate code with authentication code generated during authentication
 	var authorizationCode string
-	controller.redisClient.Get(context.Background(), "authorization_code").Scan(&authorizationCode)
+	err := controller.redisClient.Get(context.Background(), "authorization_code").Scan(&authorizationCode)
+
+	if err != nil {
+		log.Println(err)
+		return c.SendStatus(500)
+	}
 
 	if authorizationCode != reqCode {
 		log.Println(fmt.Errorf("authorization_code `%s` does not equal code `%s`", authorizationCode, reqCode))
@@ -229,7 +239,7 @@ func (controller *oauthController) GenerateToken(c fiber.Ctx) error {
 	}
 
 	// Validate redirect uri
-	redirectList, err := controller.clientRepository.GetClientRedirectList(clientId)
+	redirectList, err := controller.clientRepository.GetClientCallbackList(clientId)
 
 	if err != nil {
 		fmt.Println(err)

@@ -11,7 +11,6 @@ const dataFile = "var/sqlite/data.db"
 type Db interface {
 	Setup() error
 	Conn() *sql.DB
-	Destroy() error
 }
 
 type db struct {
@@ -52,8 +51,4 @@ func (db *db) Setup() error {
 
 func (db *db) Conn() *sql.DB {
 	return db.conn
-}
-
-func (db *db) Destroy() error {
-	return os.Remove(dataFile)
 }

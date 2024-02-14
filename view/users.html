@@ -1,1 +1,43 @@
 <h1>{{.Title}}</h1>
+
+<form action="/api/users" method="POST">
+    <div>
+        <label for="email">Email</label>
+        <input type="text" id="email" name="email" required placeholder="email" />
+    </div>
+    <div>
+        <label for="password">Password</label>
+        <input type="text" id="password" name="password" required placeholder="password" />
+    </div>
+
+    <button type="submit">Add</button>
+</form>
+
+<table class="table-auto border-separate border-spacing-2 border border-slate-500">
+    <thead>
+    <tr>
+        <th class="border border-slate-600">ID</th>
+        <th class="border border-slate-600">Email</th>
+        <th class="border border-slate-600"></th>
+    </tr>
+    </thead>
+    <tbody hx-confirm="Are you sure?" hx-target="closest tr" hx-swap="outerHTML swap:1s">
+    {{ range .Users }}
+    <tr>
+        <td class="border border-slate-700">{{ .ID }}</td>
+        <td class="border border-slate-700">{{ .Email }}</td>
+        <td class="border border-slate-700">
+            <a href="/users/{{ .ID }}"
+            >
+                Show
+            </a>
+            <button hx-delete="/api/users/{{ .ID }}"
+            >
+                Delete
+                <img class="htmx-indicator" src="/spinner.gif">
+            </button>
+        </td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>

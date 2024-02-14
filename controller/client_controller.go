@@ -1,12 +1,10 @@
 package controller
 
 import (
-	"database/sql"
-	"errors"
 	"fmt"
-	"github.com/freekieb/go-lock/database"
 	"github.com/freekieb/go-lock/model"
 	"github.com/freekieb/go-lock/random"
+	"github.com/freekieb/go-lock/repository"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"log"
@@ -17,116 +15,74 @@ type ClientController interface {
 	ShowClientDetails(c fiber.Ctx) error
 	CreateClient(c fiber.Ctx) error
 	DeleteClient(c fiber.Ctx) error
-	CreateRedirect(c fiber.Ctx) error
+	CreateCallback(c fiber.Ctx) error
 }
 
 type clientController struct {
-	db database.Db
+	clientRepository repository.ClientRepository
 }
 
-func NewClientController(db database.Db) ClientController {
+func NewClientController(clientRepository repository.ClientRepository) ClientController {
 	return &clientController{
-		db: db,
+		clientRepository: clientRepository,
 	}
 }
 
 func (controller *clientController) ShowClients(c fiber.Ctx) error {
-	var clients []model.Client
-
-	rows, err := controller.db.Conn().Query("select id, secret, name from client")
+	clientList, err := controller.clientRepository.GetClientList()
 
 	if err != nil {
-		log.Println(err)
 		return c.SendStatus(500)
-	}
-
-	for rows.Next() {
-		var id string
-		var name string
-		var secret string
-
-		err = rows.Scan(&id, &secret, &name)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		clients = append(clients, model.Client{
-			ID:     id,
-			Name:   name,
-			Secret: secret,
-		})
 	}
 
 	// Render index within layouts/main
 	return c.Render("clients", fiber.Map{
 		"Title":   "Clients",
-		"Clients": clients,
+		"Clients": clientList,
 	}, "layouts/main")
 }
 
 func (controller *clientController) ShowClientDetails(c fiber.Ctx) error {
-	clientId := c.Params("client_id")
+	paramClientId := c.Params("client_id")
 
-	var client model.Client
-	err := controller.db.Conn().QueryRow(`
-		SELECT id, name, secret
-		FROM client 
-		WHERE id = ?
-		LIMIT 1;
-		`,
-		clientId,
-	).Scan(&client.ID, &client.Name, &client.Secret)
+	clientId, err := uuid.Parse(paramClientId)
 
 	if err != nil {
 		log.Println(err)
 		return c.SendStatus(500)
 	}
 
-	var redirectUris []string
-	rows, err := controller.db.Conn().Query(`
-		SELECT redirect_uri
-		FROM client_redirect
-		WHERE client_id = ?;
-		`,
-		clientId,
-	)
+	client, err := controller.clientRepository.GetClient(clientId)
 
 	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			log.Println(err)
-			return c.SendStatus(500)
-		}
+		log.Println(err)
+		return c.SendStatus(500)
 	}
 
-	for rows.Next() {
-		var redirectUri string
-		err := rows.Scan(&redirectUri)
+	callbackList, err := controller.clientRepository.GetClientCallbackList(clientId)
 
-		if err != nil {
-			return c.SendStatus(500)
-		}
-
-		redirectUris = append(redirectUris, redirectUri)
+	if err != nil {
+		log.Println(err)
+		return c.SendStatus(500)
 	}
 
 	return c.Render("client_details", fiber.Map{
-		"Title":     "Client details",
-		"Client":    client,
-		"Redirects": redirectUris,
+		"Title":        "Client details",
+		"Client":       client,
+		"CallbackList": callbackList,
 	}, "layouts/main")
 }
 
 func (controller *clientController) CreateClient(c fiber.Ctx) error {
-	name := c.FormValue("name")
+	formName := c.FormValue("name")
 
-	stmnt, err := controller.db.Conn().Prepare(`INSERT INTO client (id, name, secret) VALUES (?,?,?);`)
-
-	if err != nil {
-		log.Println(err)
-		return c.SendStatus(500)
+	client := model.Client{
+		ID:     uuid.New(),
+		Name:   formName,
+		Secret: random.String(10),
 	}
 
-	_, err = stmnt.Exec(uuid.New().String(), name, random.String(10))
+	err := controller.clientRepository.CreateClient(client)
 
 	if err != nil {
 		log.Println(err)
@@ -137,35 +93,45 @@ func (controller *clientController) CreateClient(c fiber.Ctx) error {
 }
 
 func (controller *clientController) DeleteClient(c fiber.Ctx) error {
-	id := c.Params("client_id")
+	reqClientId := c.Params("client_id")
 
-	stmnt, err := controller.db.Conn().Prepare(`DELETE FROM client WHERE id = ?`)
-
-	if err != nil {
-		log.Println(err)
-		return c.SendStatus(500)
-	}
-
-	_, err = stmnt.Exec(id)
+	clientId, err := uuid.Parse(reqClientId)
 
 	if err != nil {
 		log.Println(err)
 		return c.SendStatus(500)
 	}
 
-	c.Status(200)
-	return c.Send([]byte(""))
+	err = controller.clientRepository.DeleteClient(clientId)
+
+	if err != nil {
+		log.Println(err)
+		return c.SendStatus(500)
+	}
+
+	return c.SendStatus(200)
 }
 
-func (controller *clientController) CreateRedirect(c fiber.Ctx) error {
-	clientId := c.Params("client_id")
+func (controller *clientController) CreateCallback(c fiber.Ctx) error {
+	paramClientId := c.Params("client_id")
+	formCallback := c.FormValue("callback")
 
-	redirect := c.FormValue("redirect")
-
-	_, err := controller.db.Conn().Exec("INSERT INTO client_redirect (id, client_id, redirect_uri) VALUES (?,?,?);", uuid.New(), clientId, redirect)
+	clientId, err := uuid.Parse(paramClientId)
 
 	if err != nil {
-		return c.SendStatus(500)
+		log.Println(err)
+		return c.SendStatus(400)
+	}
+
+	err = controller.clientRepository.CreateClientCallback(model.ClientCallback{
+		ID:       uuid.New(),
+		ClientID: clientId,
+		Uri:      formCallback,
+	})
+
+	if err != nil {
+		log.Println(err)
+		return c.SendStatus(400)
 	}
 
 	return c.Redirect().To(fmt.Sprintf("/clients/%s", clientId))

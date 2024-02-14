@@ -27,7 +27,9 @@ func main() {
 	c.App.Post("/api/login", c.AuthenticationController.Login)
 	c.App.Post("/api/clients", c.ClientController.CreateClient)
 	c.App.Delete("/api/clients/:client_id", c.ClientController.DeleteClient)
-	c.App.Post("/api/clients/:client_id/redirects", c.ClientController.CreateRedirect)
+	c.App.Post("/api/clients/:client_id/callbacks", c.ClientController.CreateCallback)
+
+	c.App.Post("/api/users", c.UserController.CreateUser)
 
 	c.App.Get("/api/oauth/authorize", c.OAuthController.ShowAuthorize)
 	c.App.Post("/api/oauth/authorize", c.OAuthController.ProcessAuthorize)
