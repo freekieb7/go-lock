@@ -1,0 +1,9 @@
+{
+    "go.testEnvVars": {
+        "APP_ROOT": "/home/acontrolfreak/code/github.com/freekieb7/go-lock"
+    },
+    "go.testFlags": [
+        "-v" // Verbose
+    ],
+    "makefile.configureOnOpen": false
+}

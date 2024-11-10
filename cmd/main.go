@@ -1,39 +1,93 @@
 package main
 
 import (
-	"github.com/freekieb/go-lock/container"
-	"github.com/gofiber/fiber/v3/middleware/logger"
-	_ "github.com/mattn/go-sqlite3"
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/freekieb7/go-lock/pkg/container"
+	"github.com/freekieb7/go-lock/pkg/data/local/migration"
+	"github.com/freekieb7/go-lock/pkg/data/local/migration/migrator"
+	migration_version "github.com/freekieb7/go-lock/pkg/data/local/migration/versions"
 )
 
 func main() {
-	c := container.New()
+	ctx := context.Background()
 
-	// Middleware
-	c.App.Use(logger.New())
+	if err := Run(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+}
 
-	// Server static/public assets
-	c.App.Static("/", "./public")
+func Run(ctx context.Context) error {
+	// Add gracefull shutdown support by listening for interuptions
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+	defer stop()
 
-	// Page routes
-	c.App.Get("/", c.HomeController.ShowHome)
-	c.App.Get("/login", c.AuthenticationController.ShowLogin)
-	c.App.Get("/authorize", c.AuthenticationController.ShowAuthorize)
-	c.App.Get("/clients", c.ClientController.ShowClients)
-	c.App.Get("/clients/:client_id", c.ClientController.ShowClientDetails)
-	c.App.Get("/users", c.UserController.ShowUsers)
+	// Create settings
+	container := container.New(ctx)
+	defer container.Database.Close()
 
-	// Api routes
-	c.App.Post("/api/login", c.AuthenticationController.Login)
-	c.App.Post("/api/clients", c.ClientController.CreateClient)
-	c.App.Delete("/api/clients/:client_id", c.ClientController.DeleteClient)
-	c.App.Post("/api/clients/:client_id/callbacks", c.ClientController.CreateCallback)
+	migrator := migrator.New(container.Database)
 
-	c.App.Post("/api/users", c.UserController.CreateUser)
+	if err := migrator.Up(ctx, []migration.Migration{
+		migration_version.NewMigrationCreateTables(container.Settings),
+	}); err != nil {
+		return errors.Join(errors.New("migration up failed"), err)
+	}
 
-	c.App.Get("/api/oauth/authorize", c.OAuthController.ShowAuthorize)
-	c.App.Post("/api/oauth/authorize", c.OAuthController.ProcessAuthorize)
-	c.App.Post("/api/oauth/token", c.OAuthController.GenerateToken)
+	// db, err := connectDB(filepath.Join(settings.DataDir, "logs.db"))
+	// if err != nil {
+	// 	return errors.Join(errors.New("Connect DB failed"), err)
+	// }
 
-	c.App.Listen("0.0.0.0:3000")
+	// // Cleanup after shutdown signal received
+	// context.AfterFunc(ctx, func() {
+	// 	log.Println("Shutdown signal received")
+
+	// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 	defer cancel()
+
+	// 	if err := server.Shutdown(ctx); err != nil {
+	// 		return err
+	// 	}
+
+	// 	log.Println("Shutdown completed")
+	// })
+
+	server := container.HttpServer
+
+	// Serve app
+	srvErr := make(chan error, 1)
+	go func() {
+		log.Printf("Listening and serving on: %s", "http://0.0.0.0:8080")
+		srvErr <- server.ListenAndServe()
+	}()
+
+	// Wait for interruption.
+	select {
+	case err := <-srvErr:
+		// Error when starting HTTP server.
+		return err
+	case <-ctx.Done():
+		// Cleanup afer shutdown signalled
+		log.Println("Shutdown signal received")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := server.Shutdown(ctx); err != nil {
+			return err
+		}
+
+		log.Println("Shutdown completed")
+	}
+
+	return nil
 }
