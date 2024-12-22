@@ -1,0 +1,10 @@
+{{define "title" }}Authorize{{ end }}
+
+{{define "content"}}
+<div class="container">
+    <form method="post">
+        <button name="authorized" type="submit" value="false" class="btn btn-secondary">Cancel</button>
+        <button name="authorized" type="submit" value="true" class="btn btn-primary">Authorize</button>
+    </form>
+</div>
+{{end}}

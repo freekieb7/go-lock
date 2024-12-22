@@ -10,20 +10,21 @@ import (
 	"os"
 	"path/filepath"
 
-	database "github.com/freekieb7/go-lock/pkg/data/local/data_source"
-	"github.com/freekieb7/go-lock/pkg/data/local/store"
+	database "github.com/freekieb7/go-lock/pkg/data/data_source"
+	"github.com/freekieb7/go-lock/pkg/data/store"
 	"github.com/freekieb7/go-lock/pkg/http/handler"
 	"github.com/freekieb7/go-lock/pkg/http/server"
 	"github.com/freekieb7/go-lock/pkg/settings"
+
+	_ "github.com/freekieb7/go-lock/pkg/data/migration/versions"
 )
 
 type Container struct {
 	Settings               *settings.Settings
 	Logger                 *slog.Logger
 	Database               *sql.DB
-	ApiStore               *store.ApiStore
+	ResourceServerStore    *store.ResourceServerStore
 	ClientStore            *store.ClientStore
-	RedirectUriStore       *store.RedirectUriStore
 	AuthorizationCodeStore *store.AuthorizationCodeStore
 	HttpServer             *http.Server
 }
@@ -35,33 +36,28 @@ func New(ctx context.Context) *Container {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	// Data sources
-	database, err := database.New(filepath.Join(settings.DataDir, "go-lock.db"))
+	database, err := database.New(filepath.Join(settings.DataDir, "go-lock.db"), settings.Environment)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Stores
-	apiStore := store.NewApiStore(database)
+	sessionStore := store.NewSessionStore(database)
+	resourceServerStore := store.NewResourceServerStore(database)
 	authorizationCodeStore := store.NewAuthorizationCodeStore(database)
 	clientStore := store.NewClientStore(database)
 	jwksStore := store.NewJwksStore(database)
-	redirectUriStore := store.NewRedirectUriStore(database)
 
-	// HTTP Handlers
-	healthHandler := handler.NewHealthHandler(logger, database)
-	oidcHandler := handler.NewOidcHandler(settings, clientStore, redirectUriStore, jwksStore)
-	oauth2Handler := handler.NewOAuth2Handler(settings, clientStore, apiStore, authorizationCodeStore, redirectUriStore, jwksStore)
 	// Listeners
-	httpHandler := handler.New(logger, healthHandler, oidcHandler, oauth2Handler)
+	httpHandler := handler.New(settings, logger, database, sessionStore, clientStore, jwksStore, authorizationCodeStore, resourceServerStore)
 	httpServer := server.New(fmt.Sprintf(":%d", settings.Port), httpHandler)
 
 	return &Container{
 		Settings:               settings,
 		Logger:                 logger,
 		Database:               database,
-		ApiStore:               apiStore,
+		ResourceServerStore:    resourceServerStore,
 		ClientStore:            clientStore,
-		RedirectUriStore:       redirectUriStore,
 		AuthorizationCodeStore: authorizationCodeStore,
 		HttpServer:             httpServer,
 	}

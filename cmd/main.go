@@ -11,9 +11,7 @@ import (
 	"time"
 
 	"github.com/freekieb7/go-lock/pkg/container"
-	"github.com/freekieb7/go-lock/pkg/data/local/migration"
-	"github.com/freekieb7/go-lock/pkg/data/local/migration/migrator"
-	migration_version "github.com/freekieb7/go-lock/pkg/data/local/migration/versions"
+	"github.com/freekieb7/go-lock/pkg/data/migration"
 )
 
 func main() {
@@ -34,32 +32,10 @@ func Run(ctx context.Context) error {
 	container := container.New(ctx)
 	defer container.Database.Close()
 
-	migrator := migrator.New(container.Database)
-
-	if err := migrator.Up(ctx, []migration.Migration{
-		migration_version.NewMigrationCreateTables(container.Settings),
-	}); err != nil {
+	migrator := migration.NewMigrator(container.Database)
+	if err := migrator.Up(ctx); err != nil {
 		return errors.Join(errors.New("migration up failed"), err)
 	}
-
-	// db, err := connectDB(filepath.Join(settings.DataDir, "logs.db"))
-	// if err != nil {
-	// 	return errors.Join(errors.New("Connect DB failed"), err)
-	// }
-
-	// // Cleanup after shutdown signal received
-	// context.AfterFunc(ctx, func() {
-	// 	log.Println("Shutdown signal received")
-
-	// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// 	defer cancel()
-
-	// 	if err := server.Shutdown(ctx); err != nil {
-	// 		return err
-	// 	}
-
-	// 	log.Println("Shutdown completed")
-	// })
 
 	server := container.HttpServer
 
