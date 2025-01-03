@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/pem"
+	"fmt"
 	"log"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/freekieb7/go-lock/pkg/data/model"
 	"github.com/freekieb7/go-lock/pkg/random"
 	"github.com/freekieb7/go-lock/pkg/settings"
+	"github.com/google/uuid"
 )
 
 func init() {
@@ -35,7 +37,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 	resourceServer := model.ResourceServer{
 		Id:               random.NewString(32),
 		Name:             m.Settings.Name,
-		Uri:              m.Settings.Host,
+		Uri:              m.Settings.Host + "/api",
 		SigningAlgorithm: model.SigningAlgorithmRS256,
 	}
 
@@ -91,12 +93,26 @@ func (m *migration20241101000000) Up() []migration.Statement {
 		PublicKeyExponent: bs,
 	}
 
+	client := model.Client{
+		Id:             uuid.New(),
+		Secret:         random.NewString(24),
+		Name:           "Auth Management Application",
+		Type:           model.ClientTypeManager,
+		IsConfidential: true,
+		RedirectUris: []string{
+			m.Settings.Host + "/app/callback",
+		},
+	}
+
+	fmt.Print("id: " + client.Id.String() + " secret: " + client.Secret)
+
 	statements := []migration.Statement{
 		{
 			Query: `CREATE TABLE IF NOT EXISTS tbl_client (
 	        id TEXT NOT NULL,
-	        secret BLOB NOT NULL,
+	        secret TEXT NOT NULL,
 	        name TEXT NOT NULL,
+			type TEXT NOT NULL,
 	        is_confidential INTEGER NOT NULL DEFAULT FALSE,
 			redirect_uris TEXT NOT NULL,
 	        PRIMARY KEY(id)
@@ -108,6 +124,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 	        client_id TEXT NOT NULL,
 	        code TEXT NOT NULL,
 	        audience TEXT NOT NULL,
+			user_id BLOB NOT NULL,
 			scope TEXT NOT NULL,
 			code_challenge TEXT,
 	        PRIMARY KEY(client_id, code),
@@ -148,7 +165,10 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			Query: `CREATE TABLE IF NOT EXISTS tbl_user (
 	        id TEXT NOT NULL,
 	        email TEXT NOT NULL,
-	        password TEXT NOT NULL,
+			password_hash TEXT NOT NULL,
+			role TEXT NOT NULL,
+			created_at INT NOT NULL,
+			updated_at INT NOT NULL,
 	        PRIMARY KEY(id),
 	        UNIQUE(email)
 	    );`,
@@ -169,6 +189,10 @@ func (m *migration20241101000000) Up() []migration.Statement {
 		{
 			Query:     `INSERT INTO tbl_jwks (id, public_key, private_key, public_key_modules, public_key_exponent) VALUES (?,?,?,?,?);`,
 			Arguments: []any{jwks.Id, jwks.PublicKey, jwks.PrivateKey, jwks.PublicKeyModules, jwks.PublicKeyExponent},
+		},
+		{
+			Query:     `INSERT INTO tbl_client (id, secret, name, type, is_confidential, redirect_uris) VALUES(?,?,?,?,?,?);`,
+			Arguments: []any{client.Id, client.Secret, client.Name, client.Type, client.IsConfidential, strings.Join(client.RedirectUris, " ")},
 		},
 	}
 

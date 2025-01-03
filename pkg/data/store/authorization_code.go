@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	ErrAuthorizationCodeDuplicate    = errors.New("authorization code already exists")
-	ErrAuthorizationCodeNotExists    = errors.New("authorization code does not exists")
-	ErrAuthorizationCodeDeleteFailed = errors.New("authorization code delete failed")
+	ErrAuthorizationCodeDuplicate    = errors.New("authorization code store: authorization code already exists")
+	ErrAuthorizationCodeNotFound     = errors.New("authorization code store: authorization code not found")
+	ErrAuthorizationCodeDeleteFailed = errors.New("authorization code store: authorization code delete failed")
 )
 
 func NewAuthorizationCodeStore(db *sql.DB) *AuthorizationCodeStore {
@@ -27,8 +27,8 @@ type AuthorizationCodeStore struct {
 func (store *AuthorizationCodeStore) Create(ctx context.Context, authorizationCode model.AuthorizationCode) error {
 	_, err := store.db.ExecContext(
 		ctx,
-		"INSERT INTO tbl_authorization_code (client_id, code, audience, scope, code_challenge) VALUES (?,?,?,?,?)",
-		authorizationCode.ClientId, authorizationCode.Code, authorizationCode.Audience, authorizationCode.Scope, authorizationCode.CodeChallenge,
+		"INSERT INTO tbl_authorization_code (client_id, user_id, code, audience, scope, code_challenge) VALUES (?,?,?,?,?,?)",
+		authorizationCode.ClientId, authorizationCode.UserId, authorizationCode.Code, authorizationCode.Audience, authorizationCode.Scope, authorizationCode.CodeChallenge,
 	)
 	if err != nil {
 		// var sqliteErr sqlite3.Error
@@ -43,13 +43,13 @@ func (store *AuthorizationCodeStore) Create(ctx context.Context, authorizationCo
 	return nil
 }
 
-func (store *AuthorizationCodeStore) Get(ctx context.Context, clientId, code string) (*model.AuthorizationCode, error) {
-	row := store.db.QueryRowContext(ctx, "SELECT * FROM tbl_authorization_code WHERE client_id = ? AND code = ? LIMIT 1;", clientId, code)
+func (store *AuthorizationCodeStore) GetByCode(ctx context.Context, code, clientId string) (*model.AuthorizationCode, error) {
+	row := store.db.QueryRowContext(ctx, "SELECT client_id, user_id, code, audience, scope, code_challenge FROM tbl_authorization_code WHERE client_id = ? AND code = ? LIMIT 1;", clientId, code)
 
 	var authorizationCode model.AuthorizationCode
-	if err := row.Scan(&authorizationCode.ClientId, &authorizationCode.Code, &authorizationCode.Audience, &authorizationCode.Scope, &authorizationCode.CodeChallenge); err != nil {
+	if err := row.Scan(&authorizationCode.ClientId, &authorizationCode.UserId, &authorizationCode.Code, &authorizationCode.Audience, &authorizationCode.Scope, &authorizationCode.CodeChallenge); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrAuthorizationCodeNotExists
+			return nil, ErrAuthorizationCodeNotFound
 		}
 		return nil, err
 	}

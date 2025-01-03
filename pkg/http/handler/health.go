@@ -20,7 +20,7 @@ func Health(
 				Logger.Error("database could not be pinged")
 			}
 
-			encoding.Encode(w, r, http.StatusOK, map[string]any{
+			encoding.Encode(w, http.StatusOK, map[string]any{
 				"alive":         true,
 				"database_ping": databaseHealth,
 			})

@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	ErrResourceServerDuplicate    = errors.New("resource server already exists")
-	ErrResourceServerNotExists    = errors.New("resource server does not exists")
-	ErrResourceServerDeleteFailed = errors.New("resource server delete failed")
+	ErrResourceServerDuplicate    = errors.New("resource server store: resource server already exists")
+	ErrResourceServerNotFound     = errors.New("resource server store: resource server does not found")
+	ErrResourceServerDeleteFailed = errors.New("resource server store: resource server delete failed")
 )
 
 func NewResourceServerStore(db *sql.DB) *ResourceServerStore {
@@ -31,7 +31,7 @@ func (store *ResourceServerStore) Create(ctx context.Context, resourceServer mod
 		resourceServer.Name,
 		resourceServer.Uri,
 		resourceServer.SigningAlgorithm,
-		resourceServer.Scopes,
+		strings.Join(resourceServer.Scopes, " "),
 	)
 	if err != nil {
 		// var sqliteErr sqlite3.Error
@@ -54,7 +54,7 @@ func (store *ResourceServerStore) GetByUri(ctx context.Context, uri string) (*mo
 	var scopes string
 	if err := row.Scan(&resourceServer.Id, &resourceServer.Name, &resourceServer.Uri, &resourceServer.SigningAlgorithm, &scopes); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrResourceServerNotExists
+			return nil, ErrResourceServerNotFound
 		}
 		return nil, err
 	}

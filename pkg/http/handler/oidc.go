@@ -12,6 +12,7 @@ import (
 	"github.com/freekieb7/go-lock/pkg/http/encoding"
 	"github.com/freekieb7/go-lock/pkg/random"
 	"github.com/freekieb7/go-lock/pkg/settings"
+	"github.com/google/uuid"
 )
 
 func OpenIdConfigurations(
@@ -28,8 +29,8 @@ func OpenIdConfigurations(
 
 			wellKnownOpenIdConfiguration := map[string]any{
 				"issuer":                 Settings.Host,
-				"authorization_endpoint": fmt.Sprintf("%s/oauth2/authorize", Settings.Host),
-				"token_endpoint":         fmt.Sprintf("%s/oauth2/token", Settings.Host),
+				"authorization_endpoint": fmt.Sprintf("%s/auth/oauth/authorize", Settings.Host),
+				"token_endpoint":         fmt.Sprintf("%s/auth/oauth/token", Settings.Host),
 				"token_endpoint_auth_methods_supported": []string{
 					"client_secret_basic",
 					// "private_key_jwt",
@@ -73,7 +74,7 @@ func OpenIdConfigurations(
 				// "ui_locales_supported":                        []string{"en-US", "en-GB", "en-CA", "fr-FR", "fr-CA"},
 			}
 
-			encoding.Encode(w, r, http.StatusOK, wellKnownOpenIdConfiguration)
+			encoding.Encode(w, http.StatusOK, wellKnownOpenIdConfiguration)
 		},
 	)
 }
@@ -82,97 +83,93 @@ func OpenIdConfigurations(
 func RegisterClient(
 	ClientStore *store.ClientStore,
 ) http.Handler {
+	type RequestBody struct {
+		RedirectUris                 []string `json:"redirect_uris"` // Required
+		ResponseTypes                []string `json:"response_types"`
+		GrantTypes                   []string `json:"grant_types"`
+		ApplicationType              string   `json:"application_type"`
+		Contacts                     []string `json:"contacts"`
+		ClientName                   string   `json:"client_name"`
+		LogoUri                      string   `json:"logo_uri"`
+		ClientUri                    string   `json:"client_uri"`
+		PolicyUri                    string   `json:"policy_uri"`
+		TosUri                       string   `json:"tos_uri"`
+		JwksUri                      string   `json:"jwks_uri"`
+		Jwks                         string   `json:"jwks"`
+		SectorIdentifierUri          string   `json:"sector_identifier_uri"`
+		SubjectType                  string   `json:"subject_type"`
+		IdTokenEncrypedResponseAlg   string   `json:"id_token_encrypted_response_alg"`
+		IdTokenSignedResponseAlg     string   `json:"id_token_signed_response_alg"`
+		IdTokenEncryptedResponseEnc  string   `json:"id_token_encrypted_response_enc"`
+		UserinfoSignedResponseAlg    string   `json:"userinfo_signed_response_alg"`
+		UserinfoEncryptedResponseAlg string   `json:"userinfo_encrypted_response_alg"`
+		UserinfoEncryptedResponseEnc string   `json:"userinfo_encrypted_response_enc"`
+		RequestObjectSigningAlg      string   `json:"request_object_signing_alg"`
+		RequestObjectEncryptionAlg   string   `json:"request_object_encryption_alg"`
+		RequestObjectEncryptionEnc   string   `json:"request_object_encryption_enc"`
+		TokenEndpointAuthMethod      string   `json:"token_endpoint_auth_method"`
+		TokenEndpointAuthSigningAlg  string   `json:"token_endpoint_auth_signing_alg"`
+		DefaultMaxAge                int      `json:"default_max_age"`
+		RequireAuthTime              bool     `json:"require_auth_time"`
+		DefaultAcrValues             []string `json:"default_acr_values"`
+		InitiateLoginUri             string   `json:"initiate_login_uri"`
+		RequestUris                  []string `json:"request_uris"`
+	}
+
+	type responseBody struct {
+		ClientId                uuid.UUID `json:"client_id"`
+		ClientSecret            string    `json:"client_secret"`
+		RegistrationAccessToken string    `json:"registration_access_token,omitempty"`
+		RegistrationClientUri   string    `json:"registration_client_uri,omitempty"`
+		ClientIdIssuedAt        int64     `json:"client_id_issued_at"`
+		ClientSecretExpiresAt   int64     `json:"client_secret_expires_at"`
+	}
+
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			type RequestBody struct {
-				RedirectUris                 []string `json:"redirect_uris"` // Required
-				ResponseTypes                []string `json:"response_types"`
-				GrantTypes                   []string `json:"grant_types"`
-				ApplicationType              string   `json:"application_type"`
-				Contacts                     []string `json:"contacts"`
-				ClientName                   string   `json:"client_name"`
-				LogoUri                      string   `json:"logo_uri"`
-				ClientUri                    string   `json:"client_uri"`
-				PolicyUri                    string   `json:"policy_uri"`
-				TosUri                       string   `json:"tos_uri"`
-				JwksUri                      string   `json:"jwks_uri"`
-				Jwks                         string   `json:"jwks"`
-				SectorIdentifierUri          string   `json:"sector_identifier_uri"`
-				SubjectType                  string   `json:"subject_type"`
-				IdTokenEncrypedResponseAlg   string   `json:"id_token_encrypted_response_alg"`
-				IdTokenSignedResponseAlg     string   `json:"id_token_signed_response_alg"`
-				IdTokenEncryptedResponseEnc  string   `json:"id_token_encrypted_response_enc"`
-				UserinfoSignedResponseAlg    string   `json:"userinfo_signed_response_alg"`
-				UserinfoEncryptedResponseAlg string   `json:"userinfo_encrypted_response_alg"`
-				UserinfoEncryptedResponseEnc string   `json:"userinfo_encrypted_response_enc"`
-				RequestObjectSigningAlg      string   `json:"request_object_signing_alg"`
-				RequestObjectEncryptionAlg   string   `json:"request_object_encryption_alg"`
-				RequestObjectEncryptionEnc   string   `json:"request_object_encryption_enc"`
-				TokenEndpointAuthMethod      string   `json:"token_endpoint_auth_method"`
-				TokenEndpointAuthSigningAlg  string   `json:"token_endpoint_auth_signing_alg"`
-				DefaultMaxAge                int      `json:"default_max_age"`
-				RequireAuthTime              bool     `json:"require_auth_time"`
-				DefaultAcrValues             []string `json:"default_acr_values"`
-				InitiateLoginUri             string   `json:"initiate_login_uri"`
-				RequestUris                  []string `json:"request_uris"`
-			}
-
-			type responseBody struct {
-				ClientId                string `json:"client_id"`
-				ClientSecret            string `json:"client_secret"`
-				RegistrationAccessToken string `json:"registration_access_token,omitempty"`
-				RegistrationClientUri   string `json:"registration_client_uri,omitempty"`
-				ClientIdIssuedAt        int64  `json:"client_id_issued_at"`
-				ClientSecretExpiresAt   int64  `json:"client_secret_expires_at"`
-			}
-
 			if r.Method != "POST" {
-				encoding.EncodeError(w, r, http.StatusMethodNotAllowed, ErrCodeInvalidRequest, "Invalid method")
-				return
-			}
-
-			if r.Header.Get("Content-Type") != "application/json" {
-				w.Header().Set("Accept", "application/json")
-				encoding.EncodeError(w, r, http.StatusUnsupportedMediaType, ErrCodeInvalidRequest, "Invalid content type")
+				w.WriteHeader(http.StatusMethodNotAllowed)
 				return
 			}
 
 			requestBody, err := encoding.Decode[RequestBody](r.Body)
 			if err != nil {
-				panic(err)
+				encoding.Encode(w, http.StatusBadRequest, "Bad request body")
+				return
 			}
 
 			if len(requestBody.RedirectUris) < 1 {
-				encoding.EncodeError(w, r, http.StatusBadRequest, ErrCodeInvalidRequest, "No redirect uri found")
+				encoding.Encode(w, http.StatusBadRequest, "Required redirect uri")
 				return
 			}
 
 			rexp := regexp.MustCompile(`(https:\/\/www\.|http:\/\/www\.|https:\/\/|http:\/\/)?[a-zA-Z0-9]{2,}(\.[a-zA-Z0-9]{2,})(\.[a-zA-Z0-9]{2,})?\/[a-zA-Z0-9]{2,}`)
 			for _, uri := range requestBody.RedirectUris {
 				if !rexp.MatchString(uri) {
-					encoding.EncodeError(w, r, http.StatusBadRequest, ErrCodeInvalidRequest, fmt.Sprintf("Invalid redirect uri : %s", uri))
+					encoding.Encode(w, http.StatusBadRequest, fmt.Sprintf("Invalid redirect uri : %s", uri))
 					return
 				}
 			}
 
 			client := model.Client{
-				Id:           random.NewString(20),
-				Secret:       random.NewString(20),
-				Name:         random.NewString(10),
-				Confidential: false,
-				RedirectUris: requestBody.RedirectUris,
+				Id:             uuid.New(),
+				Secret:         random.NewString(20),
+				Name:           random.NewString(10),
+				Type:           model.ClientTypeDefault,
+				IsConfidential: false,
+				RedirectUris:   requestBody.RedirectUris,
 			}
 			if requestBody.ClientName != "" {
 				client.Name = requestBody.ClientName
 			}
-			client.Confidential = false
+			client.IsConfidential = false
 
 			if err := ClientStore.Create(r.Context(), client); err != nil {
-				encoding.EncodeError(w, r, http.StatusBadRequest, ErrCodeInvalidRequest, "Please try again")
+				encoding.Encode(w, http.StatusInternalServerError, "Internal server error, please try again")
 				return
 			}
 
-			encoding.Encode(w, r, http.StatusCreated, responseBody{
+			encoding.Encode(w, http.StatusCreated, responseBody{
 				ClientId:         client.Id,
 				ClientSecret:     client.Secret,
 				ClientIdIssuedAt: time.Now().UTC().Unix(),
@@ -218,8 +215,6 @@ func Keys(
 			responseBody.Keys = make([]KeysReponseBodyKey, 0, len(jwkSets))
 
 			for _, jwkSet := range jwkSets {
-				// publicKeyBlock, _ := pem.Decode(jwkSet.PublicKey)
-
 				responseBody.Keys = append(responseBody.Keys, KeysReponseBodyKey{
 					Kty: "RSA",
 					Use: "sig",
@@ -233,7 +228,7 @@ func Keys(
 				})
 			}
 
-			encoding.Encode(w, r, http.StatusOK, responseBody)
+			encoding.Encode(w, http.StatusOK, responseBody)
 		},
 	)
 }

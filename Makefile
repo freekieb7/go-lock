@@ -14,6 +14,10 @@ build: ## Build environment
 	 --tag go-lock:production \
 	 .
 
+.PHONY: go
+go: ## Run
+	ADMIN_EMAIL=freekieb7@hotmail.com ADMIN_PASSWORD=asd DATA_DIR=~/code/github.com/freekieb7/go-lock/var go run ./cmd/main.go
+
 .PHONY: run
 run: ## Run build environment
 	docker run \

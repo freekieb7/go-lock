@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Environment int
@@ -22,11 +25,13 @@ func (e Environment) String() {
 }
 
 type Settings struct {
-	Environment Environment
-	Name        string
-	Host        string
-	Port        uint16
-	DataDir     string
+	Environment       Environment
+	Name              string
+	Host              string
+	Port              uint16
+	DataDir           string
+	AdminEmail        string
+	AdminPasswordHash []byte
 }
 
 func New(ctx context.Context) *Settings {
@@ -111,6 +116,24 @@ func New(ctx context.Context) *Settings {
 			log.Print("tmp data dir removed")
 		}()
 	}
+
+	adminEmailRaw := os.Getenv("ADMIN_EMAIL")
+	if settings.AdminEmail != "" {
+		if _, err := mail.ParseAddress(settings.DataDir); err != nil {
+			log.Panic(errors.Join(errors.New("admin email is invalid"), err))
+		}
+	}
+	settings.AdminEmail = adminEmailRaw
+
+	adminPasswordRaw := os.Getenv("ADMIN_PASSWORD")
+	if adminPasswordRaw == "" {
+		log.Panic(errors.New("admin password is invalid"))
+	}
+	adminPasswordHash, err := bcrypt.GenerateFromPassword([]byte(adminPasswordRaw), bcrypt.DefaultCost)
+	if err != nil {
+		log.Panic(errors.Join(errors.New("admin password encryption failed"), err))
+	}
+	settings.AdminPasswordHash = adminPasswordHash
 
 	return &settings
 }

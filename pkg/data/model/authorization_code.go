@@ -1,9 +1,9 @@
 package model
 
-import "github.com/freekieb7/go-lock/pkg/uuid"
+import "github.com/google/uuid"
 
 type AuthorizationCode struct {
-	ClientId            string
+	ClientId            uuid.UUID
 	UserId              uuid.UUID
 	Code                string
 	Audience            string

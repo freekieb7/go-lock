@@ -1,4 +1,4 @@
-{{define "title" }}Home Title{{ end }}
+{{define "title" }}Sign in{{ end }}
 
 {{define "content"}}
 <div class="container">
@@ -15,7 +15,13 @@
             <input type="checkbox" class="form-check-input" id="remember_me">
             <label class="form-check-label" for="remember_me">Remember me</label>
         </div>
-        <button type="submit" class="btn btn-primary">Submit</button>
+        <button type="submit" class="mb-3 btn btn-primary">Submit</button>
+
+        {{ if .Error }}
+        <div class="alert alert-danger" role="alert">
+            {{ .Error }}
+        </div>
+        {{ end }}
     </form>
 </div>
 {{end}}

@@ -12,6 +12,8 @@ import (
 
 	"github.com/freekieb7/go-lock/pkg/container"
 	"github.com/freekieb7/go-lock/pkg/data/migration"
+	"github.com/freekieb7/go-lock/pkg/data/model"
+	"github.com/google/uuid"
 )
 
 func main() {
@@ -35,6 +37,32 @@ func Run(ctx context.Context) error {
 	migrator := migration.NewMigrator(container.Database)
 	if err := migrator.Up(ctx); err != nil {
 		return errors.Join(errors.New("migration up failed"), err)
+	}
+
+	// Check for admin user
+	admins, err := container.UserStore.AllByRole(ctx, model.UserRoleAdmin)
+	if err != nil {
+		return errors.Join(errors.New("getting app managers failed"), err)
+	}
+
+	if len(admins) == 0 {
+		email := container.Settings.AdminEmail
+		password := container.Settings.AdminPasswordHash
+		if email == "" || len(password) == 0 {
+			return errors.New("admin email and password required for first time setup")
+		}
+
+		now := time.Now().UTC().Unix()
+		if err := container.UserStore.Create(ctx, model.User{
+			Id:           uuid.New(),
+			Email:        container.Settings.AdminEmail,
+			PasswordHash: password,
+			Role:         model.UserRoleAdmin,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}); err != nil {
+			return errors.Join(errors.New("admin user could not be created"), err)
+		}
 	}
 
 	server := container.HttpServer

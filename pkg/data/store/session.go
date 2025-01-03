@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	ErrSessionNotExists = errors.New("session does not exist")
+	ErrSessionNotFound = errors.New("session store: session not found")
 )
 
 func NewSessionStore(db *sql.DB) *SessionStore {
@@ -47,7 +47,7 @@ func (store *SessionStore) GetById(ctx context.Context, id string) (*session.Ses
 	var data []byte
 	if err := row.Scan(&session.Id, &data); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrSessionNotExists
+			return nil, ErrSessionNotFound
 		}
 		return nil, err
 	}
