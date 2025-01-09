@@ -2,6 +2,7 @@
 
 {{define "content"}}
 <div class="container">
+    <div>{{ .Scope }}</div>
     <form method="post">
         <button name="authorized" type="submit" value="false" class="btn btn-secondary">Cancel</button>
         <button name="authorized" type="submit" value="true" class="btn btn-primary">Authorize</button>

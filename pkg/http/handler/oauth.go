@@ -15,6 +15,7 @@ import (
 
 	"github.com/freekieb7/go-lock/pkg/data/model"
 	"github.com/freekieb7/go-lock/pkg/data/store"
+	"github.com/freekieb7/go-lock/pkg/generator"
 	"github.com/freekieb7/go-lock/pkg/http/encoding"
 	"github.com/freekieb7/go-lock/pkg/http/session"
 	"github.com/freekieb7/go-lock/pkg/jwt"
@@ -59,6 +60,7 @@ const (
 )
 
 type AuthRequest struct {
+	Scopes     []string
 	UrlValues  string
 	UserId     uuid.UUID
 	Authorized bool
@@ -156,7 +158,16 @@ func OAuthAuthorize(
 			stateRaw := r.URL.Query().Get("state")
 			scopeRaw := r.URL.Query().Get("scope")
 
-			client, err := ClientStore.GetById(r.Context(), clientIdRaw)
+			clientId, err := uuid.Parse(clientIdRaw)
+			if err != nil {
+				encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+					ErrOAuthInvalidRequest,
+					fmt.Sprintf("Invalid client id : %s", clientIdRaw),
+				})
+				return
+			}
+
+			client, err := ClientStore.GetById(r.Context(), clientId)
 			if err != nil {
 				if errors.Is(err, store.ErrClientNotFound) {
 					encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
@@ -210,7 +221,8 @@ func OAuthAuthorize(
 			}
 
 			supportedScopes := append(resourceServer.Scopes, "offline_access")
-			for _, scope := range strings.Split(scopeRaw, " ") {
+			scopes := strings.Split(scopeRaw, " ")
+			for _, scope := range scopes {
 				if !slices.Contains(supportedScopes, scope) {
 					encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
 						ErrOAuthInvalidRequest,
@@ -258,6 +270,7 @@ func OAuthAuthorize(
 
 					if !session.Has("auth_request") {
 						var authRequest AuthRequest
+						authRequest.Scopes = scopes
 						authRequest.UrlValues = r.URL.Query().Encode()
 						if session.Has("user_id") {
 							authRequest.UserId = session.Get("user_id").(uuid.UUID)
@@ -323,9 +336,10 @@ func OAuthAuthorize(
 }
 
 type TokenResponse struct {
-	AccessToken string  `json:"access_token"`
-	TokenType   string  `json:"token_type"`
-	ExpiresIn   float64 `json:"expires_in"`
+	AccessToken  string  `json:"access_token"`
+	TokenType    string  `json:"token_type"`
+	ExpiresIn    float64 `json:"expires_in"`
+	RefreshToken string  `json:"refresh_token,omitempty"`
 }
 
 func OAuthToken(
@@ -335,6 +349,8 @@ func OAuthToken(
 	jwksStore *store.JwksStore,
 	resourceServerStore *store.ResourceServerStore,
 	userStore *store.UserStore,
+	refreshTokenStore *store.RefreshTokenStore,
+	tokenGenerator *generator.TokenGenerator,
 ) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -384,7 +400,16 @@ func OAuthToken(
 					}
 					audienceRaw := r.Form.Get("audience")
 
-					client, err := clientStore.GetById(r.Context(), clientIdRaw)
+					clientId, err := uuid.Parse(clientIdRaw)
+					if err != nil {
+						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+							ErrOAuthInvalidRequest,
+							fmt.Sprintf("Invalid client id : %s", clientIdRaw),
+						})
+						return
+					}
+
+					client, err := clientStore.GetById(r.Context(), clientId)
 					if err != nil {
 						if errors.Is(err, store.ErrClientNotFound) {
 							encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
@@ -503,8 +528,6 @@ func OAuthToken(
 					}
 					audienceRaw := r.Form.Get("audience")
 
-					scopeRaw := r.Form.Get("scope")
-
 					// Authorization Code
 					if r.Form.Has("client_id") {
 						// Credentials are in form
@@ -537,7 +560,7 @@ func OAuthToken(
 						}
 
 						clientCredentialParts := strings.Split(string(clientCredentials), ":")
-						if len(clientCredentialParts) != 2 {
+						if len(clientCredentialParts) > 1 {
 							encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
 								ErrOAuthInvalidRequest,
 								"Invalid Authorization header",
@@ -546,11 +569,23 @@ func OAuthToken(
 						}
 
 						clientIdRaw = clientCredentialParts[0]
-						clientSecretRaw = clientCredentialParts[1]
+
+						if len(clientCredentialParts) == 2 {
+							clientSecretRaw = clientCredentialParts[1]
+						}
 					} else {
 						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
 							ErrOAuthInvalidRequest,
 							"Required param : client_id",
+						})
+						return
+					}
+
+					clientId, err := uuid.Parse(clientIdRaw)
+					if err != nil {
+						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+							ErrOAuthInvalidRequest,
+							fmt.Sprintf("Invalid client id : %s", clientIdRaw),
 						})
 						return
 					}
@@ -573,7 +608,7 @@ func OAuthToken(
 					}
 
 					// Get client based on credentials or code
-					client, err := clientStore.GetById(r.Context(), clientIdRaw)
+					client, err := clientStore.GetById(r.Context(), clientId)
 					if err != nil {
 						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
 							ErrOAuthServerError,
@@ -582,8 +617,22 @@ func OAuthToken(
 						return
 					}
 
-					if r.Form.Has("code_verifier") {
-						// Validate by verifier
+					if client.IsConfidential && client.Secret != clientSecretRaw {
+						encoding.Encode(w, http.StatusForbidden, OAuthErrorResponse{
+							ErrOAuthUnauthorizedClient,
+							fmt.Sprintf("Invalid client : %s", clientId),
+						})
+						return
+					}
+
+					if authorizationCode.CodeChallenge != "" {
+						if !r.Form.Has("code_verifier") {
+							encoding.Encode(w, http.StatusForbidden, OAuthErrorResponse{
+								ErrOAuthInvalidRequest,
+								"Required param : code_verifier",
+							})
+							return
+						}
 						codeVerifierRaw := r.Form.Get("code_verifier")
 
 						hasher := sha256.New()
@@ -593,22 +642,6 @@ func OAuthToken(
 							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
 								ErrOAuthServerError,
 								fmt.Sprintf("Invalid code verifier : %s", codeVerifierRaw),
-							})
-							return
-						}
-					} else {
-						if !client.IsConfidential {
-							encoding.Encode(w, http.StatusForbidden, OAuthErrorResponse{
-								ErrOAuthUnauthorizedClient,
-								"Unauthorized client",
-							})
-							return
-						}
-
-						if client.Secret != clientSecretRaw {
-							encoding.Encode(w, http.StatusForbidden, OAuthErrorResponse{
-								ErrOAuthAccessDenied,
-								"Access denied",
 							})
 							return
 						}
@@ -642,7 +675,8 @@ func OAuthToken(
 					}
 
 					supportedScopes := append(resourceServer.Scopes, "offline_access")
-					for _, scope := range strings.Split(scopeRaw, " ") {
+					scopes := strings.Split(authorizationCode.Scope, " ")
+					for _, scope := range scopes {
 						if !slices.Contains(supportedScopes, scope) {
 							encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
 								ErrOAuthInvalidScope,
@@ -661,64 +695,185 @@ func OAuthToken(
 						return
 					}
 
-					jwkSets, err := jwksStore.All(r.Context())
+					accessToken, expiresInSeconds, err := tokenGenerator.GenerateAccessToken(r.Context(), user.Id, resourceServer.Uri, authorizationCode.Scope)
 					if err != nil {
-						encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
-							ErrOAuthServerError,
-							"Internal server error, please try again",
+						panic(err)
+					}
+
+					responsePayload := TokenResponse{
+						AccessToken: accessToken,
+						TokenType:   "Bearer",
+						ExpiresIn:   expiresInSeconds,
+					}
+
+					if slices.Contains(scopes, "offline_access") {
+						refreshToken := model.RefreshToken{
+							Id:        uuid.New(),
+							ClientId:  client.Id,
+							UserId:    user.Id,
+							Scope:     authorizationCode.Scope,
+							Audience:  resourceServer.Uri,
+							CreatedAt: time.Now().Unix(),
+							ExpiresAt: time.Now().Add(model.RefreshTokenExpiresIn).Unix(),
+						}
+						if err := refreshTokenStore.Create(r.Context(), refreshToken); err != nil {
+							panic(err)
+						}
+
+						responsePayload.RefreshToken = refreshToken.Id.String()
+					}
+
+					encoding.Encode(w, http.StatusOK, responsePayload)
+				}
+			case "refresh_token":
+				{
+					var (
+						clientIdRaw     string
+						clientSecretRaw string
+					)
+					if r.Form.Has("client_id") {
+						// Credentials are in form
+						clientIdRaw = r.Form.Get("client_id")
+						clientSecretRaw = r.Form.Get("client_secret")
+					} else if r.Header.Get("Authorization") != "" {
+						// Credentials are in header
+						authorizationHeader := r.Header.Get("Authorization")
+						if !strings.HasPrefix(authorizationHeader, "Basic ") {
+							encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+								ErrOAuthInvalidRequest,
+								"Invalid Authorization header",
+							})
+							return
+						}
+
+						authorizationHeaderParts := strings.Split(authorizationHeader, " ")
+						if len(authorizationHeaderParts) != 2 {
+							encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+								ErrOAuthInvalidRequest,
+								"Invalid Authorization header",
+							})
+							return
+						}
+
+						base64ClientCredentials := authorizationHeaderParts[1]
+						clientCredentials, err := base64.StdEncoding.DecodeString(base64ClientCredentials)
+						if err != nil {
+							panic(err)
+						}
+
+						clientCredentialParts := strings.Split(string(clientCredentials), ":")
+						if len(clientCredentialParts) > 1 {
+							encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+								ErrOAuthInvalidRequest,
+								"Invalid Authorization header",
+							})
+							return
+						}
+
+						clientIdRaw = clientCredentialParts[0]
+
+						if len(clientCredentialParts) == 2 {
+							clientSecretRaw = clientCredentialParts[1]
+						}
+					} else {
+						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+							ErrOAuthInvalidRequest,
+							"Required param : client_id",
 						})
 						return
 					}
 
-					if len(jwkSets) < 1 {
-						encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
-							ErrOAuthServerError,
-							"Internal server error, please try again",
+					if !r.Form.Has("refresh_token") {
+						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+							ErrOAuthInvalidRequest,
+							"Required param : refresh_token",
+						})
+						return
+					}
+					refreshTokenRaw := r.Form.Get("refresh_token")
+
+					// todo scope subset
+					if !r.Form.Has("scope") {
+						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+							ErrOAuthInvalidRequest,
+							"Unsupported param : scope",
 						})
 						return
 					}
 
-					jwks := jwkSets[len(jwkSets)-1] // Take last
-
-					privateKey, err := jwt.ParseRsaPrivateKey(jwks.PrivateKey)
+					clientId, err := uuid.Parse(clientIdRaw)
 					if err != nil {
-						encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
-							ErrOAuthServerError,
-							"Internal server error, please try again",
+						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+							ErrOAuthInvalidRequest,
+							fmt.Sprintf("Invalid client id : %s", clientId),
 						})
 						return
 					}
 
-					now := time.Now().UTC()
-					expiresIn := time.Hour
-					token := jwt.Token{
-						Header: map[string]any{
-							"kid": jwks.Id,
-						},
-						Payload: map[string]any{
-							"iss":   settings.Host,
-							"sub":   user.Id.String(),
-							"exp":   now.Add(expiresIn).Unix(),
-							"iat":   now.Unix(),
-							"nbf":   now.Unix(),
-							"scope": scopeRaw,
-							"aud":   audienceRaw,
-						},
-					}
-
-					signedToken, err := jwt.Encode(token, privateKey)
+					client, err := clientStore.GetById(r.Context(), clientId)
 					if err != nil {
-						encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
-							ErrOAuthServerError,
-							"Internal server error, please try again",
+						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+							ErrOAuthInvalidRequest,
+							fmt.Sprintf("Invalid client : %s", clientIdRaw),
 						})
 						return
+					}
+
+					if client.IsConfidential && client.Secret != clientSecretRaw {
+						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+							ErrOAuthAccessDenied,
+							fmt.Sprintf("Invalid client : %s", clientIdRaw),
+						})
+						return
+					}
+
+					refreshTokenId, err := uuid.Parse(refreshTokenRaw)
+					if err != nil {
+						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+							ErrOAuthInvalidRequest,
+							fmt.Sprintf("Invalid refresh token : %s", refreshTokenRaw),
+						})
+						return
+					}
+
+					currentRefreshToken, err := refreshTokenStore.GetById(r.Context(), refreshTokenId, clientId)
+					if err != nil {
+						panic(err)
+					}
+
+					if time.Now().Unix() > currentRefreshToken.ExpiresAt {
+						encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
+							ErrOAuthInvalidRequest,
+							fmt.Sprintf("Expired refresh token : %s", refreshTokenRaw),
+						})
+						return
+					}
+
+					accessToken, expiresInSeconds, err := tokenGenerator.GenerateAccessToken(r.Context(), currentRefreshToken.UserId, currentRefreshToken.Audience, currentRefreshToken.Scope)
+					if err != nil {
+						panic(err)
+					}
+
+					newRefreshToken := model.RefreshToken{
+						Id:        uuid.New(),
+						ClientId:  currentRefreshToken.ClientId,
+						UserId:    currentRefreshToken.UserId,
+						Scope:     currentRefreshToken.Scope,
+						Audience:  currentRefreshToken.Audience,
+						CreatedAt: time.Now().Unix(),
+						ExpiresAt: time.Now().Add(model.RefreshTokenExpiresIn).Unix(),
+					}
+
+					refreshTokenStore.DeleteById(r.Context(), currentRefreshToken.Id, currentRefreshToken.ClientId)
+					if err := refreshTokenStore.Create(r.Context(), newRefreshToken); err != nil {
+						panic(err)
 					}
 
 					encoding.Encode(w, http.StatusOK, TokenResponse{
-						AccessToken: signedToken,
-						TokenType:   "Bearer",
-						ExpiresIn:   expiresIn.Seconds(),
+						AccessToken:  accessToken,
+						TokenType:    "Bearer",
+						ExpiresIn:    expiresInSeconds,
+						RefreshToken: newRefreshToken.Id.String(),
 					})
 				}
 			default:

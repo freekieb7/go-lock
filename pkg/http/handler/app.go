@@ -1,18 +1,25 @@
 package handler
 
 import (
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/freekieb7/go-lock/pkg/data/store"
 	"github.com/freekieb7/go-lock/pkg/http/encoding"
 	"github.com/freekieb7/go-lock/pkg/http/session"
-	"github.com/freekieb7/go-lock/pkg/random"
 	"github.com/freekieb7/go-lock/pkg/settings"
+	"github.com/google/uuid"
 )
+
+func init() {
+	gob.Register(map[string]any{})
+	gob.Register(uuid.UUID{})
+}
 
 func Home() http.Handler {
 	return http.HandlerFunc(
@@ -43,6 +50,7 @@ func Callback(settings *settings.Settings, clientStore *store.ClientStore) http.
 		RefreshToken string `json:"refresh_token"`
 		IdToken      string `json:"id_token"`
 		TokenType    string `json:"token_type"`
+		ExpiresIn    uint32 `json:"expires_in"`
 	}
 
 	return http.HandlerFunc(
@@ -92,8 +100,15 @@ func Callback(settings *settings.Settings, clientStore *store.ClientStore) http.
 				return
 			}
 
-			sess.Set("user_id", random.NewString(10)) // todo change this bullshit
-			sess.Set("api_access_token", tknRes.AccessToken)
+			user := map[string]any{
+				"id": uuid.New(),
+				"account": map[string]any{
+					"access_token":         tknRes.AccessToken,
+					"access_token_expires": time.Now().UTC().Add(time.Second * time.Duration(tknRes.ExpiresIn)).Unix(),
+					"refresh_token":        tknRes.RefreshToken,
+				},
+			}
+			sess.Set("user", user)
 
 			w.Header().Add("Location", "/app")
 			w.WriteHeader(http.StatusSeeOther)

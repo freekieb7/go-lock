@@ -1,7 +1,7 @@
 package model
 
 type AccessToken struct {
-	ClientId       string
-	Token          string
-	ExpirationDate int64
+	ClientId      string
+	Token         string
+	ExpiresAtDate int64
 }

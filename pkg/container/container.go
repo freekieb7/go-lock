@@ -12,6 +12,7 @@ import (
 
 	database "github.com/freekieb7/go-lock/pkg/data/data_source"
 	"github.com/freekieb7/go-lock/pkg/data/store"
+	"github.com/freekieb7/go-lock/pkg/generator"
 	"github.com/freekieb7/go-lock/pkg/http/handler"
 	"github.com/freekieb7/go-lock/pkg/http/server"
 	"github.com/freekieb7/go-lock/pkg/settings"
@@ -49,9 +50,13 @@ func New(ctx context.Context) *Container {
 	clientStore := store.NewClientStore(db)
 	jwksStore := store.NewJwksStore(db)
 	userStore := store.NewUserStore(db)
+	refreshTokenStore := store.NewRefreshTokenStore(db)
+
+	// Generators
+	tokenGenerator := generator.NewTokenGenerator(settings, jwksStore)
 
 	// Listeners
-	httpHandler := handler.New(settings, logger, db, sessionStore, clientStore, jwksStore, authorizationCodeStore, resourceServerStore, userStore)
+	httpHandler := handler.New(settings, logger, db, sessionStore, clientStore, jwksStore, authorizationCodeStore, resourceServerStore, userStore, refreshTokenStore, tokenGenerator)
 	httpServer := server.New(fmt.Sprintf(":%d", settings.Port), httpHandler)
 
 	return &Container{

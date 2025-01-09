@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/freekieb7/go-lock/pkg/data/model"
+	"github.com/google/uuid"
 )
 
 var (
@@ -62,7 +63,7 @@ func (store *ClientStore) GetManagerCredentials(ctx context.Context) (*model.Cli
 	return &client, nil
 }
 
-func (store *ClientStore) GetById(ctx context.Context, id string) (*model.Client, error) {
+func (store *ClientStore) GetById(ctx context.Context, id uuid.UUID) (*model.Client, error) {
 	row := store.db.QueryRowContext(ctx, "SELECT id, secret, name, type, is_confidential, redirect_uris FROM tbl_client WHERE id = ? LIMIT 1;", id)
 
 	var client model.Client

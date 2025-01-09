@@ -136,7 +136,9 @@ func Authorize() http.Handler {
 					return
 				}
 
-				tmpl.Execute(w, nil)
+				tmpl.Execute(w, map[string]any{
+					"Scope": authRequest.Scopes,
+				})
 				return
 			}
 

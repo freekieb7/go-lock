@@ -108,7 +108,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 
 	statements := []migration.Statement{
 		{
-			Query: `CREATE TABLE IF NOT EXISTS tbl_client (
+			Query: `CREATE TABLE tbl_client (
 	        id TEXT NOT NULL,
 	        secret TEXT NOT NULL,
 	        name TEXT NOT NULL,
@@ -120,7 +120,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			Arguments: []any{},
 		},
 		{
-			Query: `CREATE TABLE IF NOT EXISTS tbl_authorization_code (
+			Query: `CREATE TABLE tbl_authorization_code (
 	        client_id TEXT NOT NULL,
 	        code TEXT NOT NULL,
 	        audience TEXT NOT NULL,
@@ -132,7 +132,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 	    );`, Arguments: []any{},
 		},
 		{
-			Query: `CREATE TABLE IF NOT EXISTS tbl_access_token (
+			Query: `CREATE TABLE tbl_access_token (
 	        client_id TEXT NOT NULL,
 	        token TEXT NOT NULL,
 	        expiration_date NOT NULL,
@@ -141,7 +141,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 	    );`, Arguments: []any{},
 		},
 		{
-			Query: `CREATE TABLE IF NOT EXISTS tbl_jwks (
+			Query: `CREATE TABLE tbl_jwks (
 	        id TEXT NOT NULL,
 	        public_key BLOB NOT NULL,
 	        private_key BLOB NOT NULL,
@@ -151,7 +151,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 	    );`, Arguments: []any{},
 		},
 		{
-			Query: `CREATE TABLE IF NOT EXISTS tbl_resource_server (
+			Query: `CREATE TABLE tbl_resource_server (
 	        id TEXT NOT NULL,
 	        uri TEXT NOT NULL UNIQUE,
 	        name TEXT NOT NULL,
@@ -162,7 +162,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			Arguments: []any{},
 		},
 		{
-			Query: `CREATE TABLE IF NOT EXISTS tbl_user (
+			Query: `CREATE TABLE tbl_user (
 	        id TEXT NOT NULL,
 	        email TEXT NOT NULL,
 			password_hash TEXT NOT NULL,
@@ -175,11 +175,24 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			Arguments: []any{},
 		},
 		{
-			Query: `CREATE TABLE IF NOT EXISTS tbl_session (
+			Query: `CREATE TABLE tbl_session (
 	        id TEXT NOT NULL,
 	        data BLOB NOT NULL,
 	        PRIMARY KEY(id)
 	    );`,
+			Arguments: []any{},
+		},
+		{
+			Query: `CREATE TABLE tbl_refresh_token (
+			id TEXT NOT NULL,
+			client_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			audience TEXT NOT NULL,
+			scope TEXT NOT NULL,
+			created_at INT NOT NULL,
+			expires_at INT NOT NULL,
+			PRIMARY KEY (id, client_id)
+		);`,
 			Arguments: []any{},
 		},
 		{
@@ -202,6 +215,10 @@ func (m *migration20241101000000) Up() []migration.Statement {
 func (*migration20241101000000) Down() []migration.Statement {
 
 	return []migration.Statement{
+		{
+			Query:     `DROP TABLE tbl_refresh_token;`,
+			Arguments: []any{},
+		},
 		{
 			Query:     `DROP TABLE tbl_session;`,
 			Arguments: []any{},
