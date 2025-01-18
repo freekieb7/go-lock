@@ -1,0 +1,51 @@
+{{define "title" }}Home{{ end }}
+
+{{define "content"}}
+{{ template "sidebar" . }}
+
+<div class="container">
+    <div class="p-2">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createClientModal">Create</button>
+    </div>
+    <table class="table">
+        <thead>
+            <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Client ID</th>
+                <th scope="col">Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ range .Clients }}
+            <tr>
+                <td>{{ .Name }}</td>
+                <td>{{ .Id }}</td>
+                <td>{{ .Type }}</td>
+            </tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="createClientModal" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="modalLabel">Modal title</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="/clients">
+                <div class="modal-body">
+                    <label for="inputName" class="form-label">Name</label>
+                    <input type="text" class="form-control" id="inputName" name="name">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{{end}}

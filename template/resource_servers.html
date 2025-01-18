@@ -1,0 +1,26 @@
+{{define "title" }}Home{{ end }}
+
+{{define "content"}}
+{{ template "sidebar" . }}
+
+<div class="container">
+    <table class="table">
+        <thead>
+            <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Url</th>
+                <th scope="col">Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ range .ResourceServers }}
+            <tr>
+                <td>{{ .Name }}</td>
+                <td>{{ .Url }}</td>
+                <td>{{ .Type }}</td>
+            </tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>
+{{end}}

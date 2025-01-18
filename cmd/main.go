@@ -5,15 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/freekieb7/go-lock/pkg/container"
-	"github.com/freekieb7/go-lock/pkg/data/migration"
-	"github.com/freekieb7/go-lock/pkg/data/model"
-	"github.com/google/uuid"
+	"github.com/freekieb7/go-lock/pkg/core/container"
+	"github.com/freekieb7/go-lock/pkg/core/http/handler"
+	"github.com/freekieb7/go-lock/pkg/core/migration"
 )
 
 func main() {
@@ -39,38 +39,16 @@ func Run(ctx context.Context) error {
 		return errors.Join(errors.New("migration up failed"), err)
 	}
 
-	// Check for admin user
-	admins, err := container.UserStore.AllByRole(ctx, model.UserRoleAdmin)
-	if err != nil {
-		return errors.Join(errors.New("getting app managers failed"), err)
+	addr := fmt.Sprintf("0.0.0.0:%d", container.Settings.Port)
+	server := &http.Server{
+		Addr:    addr,
+		Handler: handler.New(container),
 	}
-
-	if len(admins) == 0 {
-		email := container.Settings.AdminEmail
-		password := container.Settings.AdminPasswordHash
-		if email == "" || len(password) == 0 {
-			return errors.New("admin email and password required for first time setup")
-		}
-
-		now := time.Now().UTC().Unix()
-		if err := container.UserStore.Create(ctx, model.User{
-			Id:           uuid.New(),
-			Email:        container.Settings.AdminEmail,
-			PasswordHash: password,
-			Role:         model.UserRoleAdmin,
-			CreatedAt:    now,
-			UpdatedAt:    now,
-		}); err != nil {
-			return errors.Join(errors.New("admin user could not be created"), err)
-		}
-	}
-
-	server := container.HttpServer
 
 	// Serve app
 	srvErr := make(chan error, 1)
 	go func() {
-		log.Printf("Listening and serving on: %s", "http://0.0.0.0:8080")
+		log.Printf("Listening and serving on: %s", fmt.Sprintf(":%d", container.Settings.Port))
 		srvErr <- server.ListenAndServe()
 	}()
 

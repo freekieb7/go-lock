@@ -16,7 +16,7 @@ build: ## Build environment
 
 .PHONY: go
 go: ## Run
-	ADMIN_EMAIL=freekieb7@hotmail.com ADMIN_PASSWORD=asd DATA_DIR=~/code/github.com/freekieb7/go-lock/var go run ./cmd/main.go
+	CLIENT_ID=736c79f0-497b-4ba7-a7be-ba9cbae653bb CLIENT_SECRET=supersecret DATA_DIR=~/code/github.com/freekieb7/go-lock/var go run ./cmd/main.go
 
 .PHONY: run
 run: ## Run build environment
