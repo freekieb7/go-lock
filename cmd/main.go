@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/freekieb7/go-lock/pkg/core/container"
-	"github.com/freekieb7/go-lock/pkg/core/http/handler"
-	"github.com/freekieb7/go-lock/pkg/core/migration"
+	"github.com/freekieb7/go-lock/pkg/container"
+	"github.com/freekieb7/go-lock/pkg/http/handler"
+	"github.com/freekieb7/go-lock/pkg/migration"
 )
 
 func main() {
