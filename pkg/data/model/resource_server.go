@@ -1,5 +1,7 @@
 package model
 
+import "github.com/google/uuid"
+
 type SigningAlgorithm string
 
 const (
@@ -30,7 +32,7 @@ func (t ResourceServerType) UserFriendlyName() string {
 }
 
 type ResourceServer struct {
-	Id                       string
+	Id                       uuid.UUID
 	Name                     string
 	Url                      string
 	Type                     ResourceServerType

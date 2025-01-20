@@ -1,0 +1,31 @@
+{{define "title" }}Home{{ end }}
+
+{{define "content"}}
+{{ template "sidebar" . }}
+
+<div class="container">
+    <div class="py-2">
+        <a href="/resourceServers/create" class="btn btn-primary">Create</a>
+    </div>
+    <table class="table">
+        <thead>
+            <tr>
+                <th></th>
+                <th scope="col">Name</th>
+                <th scope="col">Url</th>
+                <th scope="col">Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ range .ResourceServers }}
+            <tr>
+                <td><a href="/resourceServers/{{ .Id }}">x</a></td>
+                <td>{{ .Name }}</td>
+                <td>{{ .Url }}</td>
+                <td>{{ .Type }}</td>
+            </tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>
+{{end}}

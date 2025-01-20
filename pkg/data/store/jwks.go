@@ -40,6 +40,17 @@ func (store *JwksStore) Create(ctx context.Context, jwts model.Jwks) error {
 	return nil
 }
 
+// todo candidate for caching
+func (store *JwksStore) FirstActive(ctx context.Context) (model.Jwks, error) {
+	var jwks model.Jwks
+	row := store.db.QueryRowContext(ctx, "SELECT id, public_key, private_key, public_key_modules, public_key_exponent FROM tbl_jwks LIMIT 1;")
+	if err := row.Scan(&jwks.Id, &jwks.PublicKey, &jwks.PrivateKey, &jwks.PublicKeyModules, &jwks.PublicKeyExponent); err != nil {
+		return jwks, err
+	}
+
+	return jwks, nil
+}
+
 func (store *JwksStore) All(ctx context.Context) ([]model.Jwks, error) {
 	rows, err := store.db.QueryContext(ctx, "SELECT id, public_key, private_key, public_key_modules, public_key_exponent FROM tbl_jwks")
 	if err != nil {

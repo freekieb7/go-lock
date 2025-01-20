@@ -1,0 +1,17 @@
+{{define "title" }}New resource server{{ end }}
+
+{{define "content"}}
+{{ template "sidebar" . }}
+
+<div class="container">
+    <form method="post" action="/resourceServers/create">
+        <div class="modal-body">
+            <label for="inputName" class="form-label">Name</label>
+            <input type="text" class="form-control" id="inputName" name="name">
+        </div>
+        <div class="modal-footer">
+            <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+    </form>
+</div>
+{{end}}

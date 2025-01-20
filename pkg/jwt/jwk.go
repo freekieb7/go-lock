@@ -25,3 +25,17 @@ func ParseRsaPrivateKey(key []byte) (*rsa.PrivateKey, error) {
 
 	return privateKey, nil
 }
+
+func ParseRsaPublicKey(key []byte) (*rsa.PublicKey, error) {
+	block, _ := pem.Decode(key)
+	if block == nil {
+		return nil, errors.New("parse rsa private key : pem decode failed")
+	}
+
+	publicKey, err := x509.ParsePKCS1PublicKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return publicKey, nil
+}

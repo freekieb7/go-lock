@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/freekieb7/go-lock/pkg/random"
 )
@@ -53,9 +54,9 @@ type TokenErrorResponse struct {
 	ErrorDescription string `json:"error_description"`
 }
 
-func (provider *OAuthProvider) AuthrorizationUrl() (string, string) {
+func (provider *OAuthProvider) AuthrorizationUrl(scope string) (string, string) {
 	state := random.NewUrlSafeString(10)
-	url := fmt.Sprintf("%s?response_type=code&client_id=%s&redirect_uri=%s&audience=%s&state=%s", provider.AuthUrl, provider.ClientId, provider.RedirectUrl, provider.Audience, state)
+	url := fmt.Sprintf("%s?response_type=code&client_id=%s&redirect_uri=%s&audience=%s&state=%s&scope=%s", provider.AuthUrl, provider.ClientId, provider.RedirectUrl, provider.Audience, state, url.QueryEscape(scope))
 	return url, state
 }
 

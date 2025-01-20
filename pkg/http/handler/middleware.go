@@ -13,20 +13,23 @@ import (
 
 	"github.com/freekieb7/go-lock/pkg/data/store"
 	"github.com/freekieb7/go-lock/pkg/http/encoding"
+	"github.com/freekieb7/go-lock/pkg/jwt"
 	"github.com/freekieb7/go-lock/pkg/oauth"
 	"github.com/freekieb7/go-lock/pkg/session"
+	"github.com/freekieb7/go-lock/pkg/settings"
 	"github.com/google/uuid"
 )
 
 const sessionCookieKey string = "SID"
+const defaultScope string = "offline_access openid"
 
-func authenticatedMiddleware(oauthProvider *oauth.OAuthProvider, sessionStore *store.SessionStore, next http.Handler) http.Handler {
+func authenticatedMiddleware(settings *settings.Settings, oauthProvider *oauth.OAuthProvider, sessionStore *store.SessionStore, next http.Handler) http.Handler {
 	return sessionMiddleware(sessionStore, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := session.FromRequest(r)
 
 		// Force user to be signed in
 		if !sess.HasUser() {
-			url, state := oauthProvider.AuthrorizationUrl()
+			url, state := oauthProvider.AuthrorizationUrl(defaultScope)
 			sess.Set("state", state)
 
 			// Redirect to authorization server
@@ -38,6 +41,14 @@ func authenticatedMiddleware(oauthProvider *oauth.OAuthProvider, sessionStore *s
 
 		// Refresh tokens if expired
 		if user.TokenExpiresAt <= time.Now().Unix() {
+			if user.RefreshToken == "" {
+				sess.Delete("user")
+
+				w.Header().Add("Location", "/")
+				w.WriteHeader(http.StatusSeeOther)
+				return
+			}
+
 			tokenResponse, err := oauthProvider.Refresh(user.RefreshToken)
 			if err != nil {
 				if errors.Is(err, oauth.ErrInvalidRefreshToken) {
@@ -51,8 +62,66 @@ func authenticatedMiddleware(oauthProvider *oauth.OAuthProvider, sessionStore *s
 				panic(err)
 			}
 
+			idToken, err := jwt.Decode(tokenResponse.IdToken)
+			if err != nil {
+				panic(err)
+			}
+
+			// todo validate token
+			// issuer := idToken.Payload["iss"].(string)
+			// if issuer != settings.Host {
+			// 	w.WriteHeader(http.StatusForbidden)
+			// 	return
+			// }
+
+			// resOpenId, err := http.Get(issuer + "/.well-known/openid-configuration")
+			// if err != nil {
+			// 	panic(err)
+			// }
+			// defer resOpenId.Body.Close()
+
+			// type OpenIdResponseBody struct {
+			// 	JwksUri string `json:"jwks_uri"`
+			// }
+			// var openIdResponseBody OpenIdResponseBody
+			// if err := json.NewDecoder(resOpenId.Body).Decode(&openIdResponseBody); err != nil {
+			// 	panic(err)
+			// }
+
+			// resJwks, err := http.Get(openIdResponseBody.JwksUri)
+			// if err != nil {
+			// 	panic(err)
+			// }
+			// defer resJwks.Body.Close()
+
+			// type JwksResponseBody struct {
+			// 	Keys []struct {
+			// 		Kid string `json:"kid"`
+			// 	} `json:"keys"`
+			// }
+			// var jwksResponseBody JwksResponseBody
+			// if err := json.NewDecoder(resJwks.Body).Decode(&jwksResponseBody); err != nil {
+			// 	panic(err)
+			// }
+
+			// // todo proper signature check
+			// found := false
+			// for _, key := range jwksResponseBody.Keys {
+			// 	if idToken.Header["kid"].(string) == key.Kid {
+			// 		found = true
+			// 		break
+			// 	}
+			// }
+
+			// if !found {
+			// 	panic("key not found for id token")
+			// }
+
+			subject := idToken.Payload["sub"].(string)
+			userId := uuid.MustParse(subject)
+
 			sess.SetUser(session.SessionUser{
-				Id:             uuid.New(),
+				Id:             userId,
 				AccessToken:    tokenResponse.AccessToken,
 				TokenExpiresAt: time.Now().Add(time.Second * time.Duration(tokenResponse.ExpiresIn)).Unix(),
 				RefreshToken:   tokenResponse.RefreshToken,

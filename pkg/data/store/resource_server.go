@@ -51,17 +51,32 @@ func (store *ResourceServerStore) Create(ctx context.Context, resourceServer mod
 	return nil
 }
 
-func (store *ResourceServerStore) GetByUrl(ctx context.Context, url string) (*model.ResourceServer, error) {
-	row := store.db.QueryRowContext(ctx, "SELECT id, url, name, type, signing_algorithm, scopes, allow_skipping_user_consent, created_at, updated_at, deleted_at FROM tbl_resource_server WHERE url = ? LIMIT 1;", url)
-
+func (store *ResourceServerStore) GetById(ctx context.Context, id uuid.UUID) (model.ResourceServer, error) {
 	var resourceServer model.ResourceServer
+
+	row := store.db.QueryRowContext(ctx, "SELECT id, url, name, type, signing_algorithm, scopes, allow_skipping_user_consent, created_at, updated_at, deleted_at FROM tbl_resource_server WHERE id = ? LIMIT 1;", id)
+
 	if err := row.Scan(&resourceServer.Id, &resourceServer.Url, &resourceServer.Name, &resourceServer.Type, &resourceServer.SigningAlgorithm, &resourceServer.Scopes, &resourceServer.AllowSkippingUserConsent, &resourceServer.CreatedAt, &resourceServer.UpdatedAt, &resourceServer.DeletedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrResourceServerNotFound
+			return resourceServer, ErrResourceServerNotFound
 		}
-		return nil, err
+		return resourceServer, err
 	}
-	return &resourceServer, nil
+	return resourceServer, nil
+}
+
+func (store *ResourceServerStore) GetByUrl(ctx context.Context, url string) (model.ResourceServer, error) {
+	var resourceServer model.ResourceServer
+
+	row := store.db.QueryRowContext(ctx, "SELECT id, url, name, type, signing_algorithm, scopes, allow_skipping_user_consent, created_at, updated_at, deleted_at FROM tbl_resource_server WHERE url = ? LIMIT 1;", url)
+
+	if err := row.Scan(&resourceServer.Id, &resourceServer.Url, &resourceServer.Name, &resourceServer.Type, &resourceServer.SigningAlgorithm, &resourceServer.Scopes, &resourceServer.AllowSkippingUserConsent, &resourceServer.CreatedAt, &resourceServer.UpdatedAt, &resourceServer.DeletedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return resourceServer, ErrResourceServerNotFound
+		}
+		return resourceServer, err
+	}
+	return resourceServer, nil
 }
 
 func (store *ResourceServerStore) DeleteById(ctx context.Context, id uuid.UUID) error {

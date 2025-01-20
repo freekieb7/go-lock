@@ -9,6 +9,7 @@ import (
 
 	"github.com/freekieb7/go-lock/pkg/data/store"
 	"github.com/freekieb7/go-lock/pkg/http/encoding"
+	"github.com/freekieb7/go-lock/pkg/jwt"
 	"github.com/freekieb7/go-lock/pkg/oauth"
 	"github.com/freekieb7/go-lock/pkg/session"
 	"github.com/freekieb7/go-lock/pkg/settings"
@@ -16,16 +17,15 @@ import (
 )
 
 func HomePage() http.Handler {
+	tmpl, err := template.ParseFiles("template/base.html", "template/component/sidebar.html", "template/home.html")
+	if err != nil {
+		panic(err)
+	}
+
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == "GET" {
 				errMsg := r.URL.Query().Get("error")
-
-				tmpl, err := template.ParseFiles("template/base.html", "template/component/sidebar.html", "template/home.html")
-				if err != nil {
-					w.WriteHeader(500)
-					return
-				}
 
 				tmpl.Execute(w, map[string]any{
 					"Error": errMsg,
@@ -74,8 +74,25 @@ func Callback(oauthProvider *oauth.OAuthProvider, settings *settings.Settings, c
 					return
 				}
 
+				idToken, err := jwt.Decode(tokenResponse.IdToken)
+				if err != nil {
+					log.Println(err)
+					encoding.Encode(w, http.StatusInternalServerError, "Internal server error")
+					return
+				}
+
+				subject := idToken.Payload["sub"].(string)
+				userId, err := uuid.Parse(subject)
+				if err != nil {
+					log.Println(err)
+					encoding.Encode(w, http.StatusInternalServerError, "Internal server error")
+					return
+				}
+
+				// todo validate tokens
+
 				sess.SetUser(session.SessionUser{
-					Id:             uuid.New(),
+					Id:             userId,
 					AccessToken:    tokenResponse.AccessToken,
 					TokenExpiresAt: time.Now().Add(time.Second * time.Duration(tokenResponse.ExpiresIn)).Unix(),
 					RefreshToken:   tokenResponse.RefreshToken,

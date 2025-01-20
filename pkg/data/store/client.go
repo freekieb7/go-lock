@@ -59,22 +59,23 @@ func (store *ClientStore) All(ctx context.Context, limit, offset uint32) ([]mode
 	return clients, nil
 }
 
-func (store *ClientStore) GetById(ctx context.Context, id uuid.UUID) (*model.Client, error) {
+func (store *ClientStore) GetById(ctx context.Context, id uuid.UUID) (model.Client, error) {
+	var client model.Client
+
 	row := store.db.QueryRowContext(ctx, "SELECT id, secret, name, type, is_confidential, redirect_urls, created_at, updated_at, deleted_at FROM tbl_client WHERE id = ? LIMIT 1;", id)
 
-	var client model.Client
 	if err := row.Scan(&client.Id, &client.Secret, &client.Name, &client.Type, &client.IsConfidential, &client.RedirectUrls, &client.CreatedAt, &client.UpdatedAt, &client.DeletedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrClientNotFound
+			return client, ErrClientNotFound
 		}
-		return nil, err
+		return client, err
 	}
 
-	return &client, nil
+	return client, nil
 }
 
 func (store *ClientStore) DeleteById(ctx context.Context, id uuid.UUID) error {
-	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_client WHERE id = ? LIMIT 1;`, id)
+	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_client WHERE id = ?;`, id)
 	if err != nil {
 		return err
 	}

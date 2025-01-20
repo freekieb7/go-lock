@@ -77,3 +77,29 @@ func encodeWithRSA(token Token, key *rsa.PrivateKey) (string, error) {
 	signedToken := encodedToken + "." + base64.RawURLEncoding.EncodeToString(signatureBytes)
 	return signedToken, nil
 }
+
+func verifyWithRsa(token Token, key *rsa.PublicKey) error {
+	var hash crypto.Hash
+	switch token.Header["alg"] {
+	case "RS256":
+		{
+			hash = crypto.SHA256
+		}
+	case "RS384":
+		{
+			hash = crypto.SHA384
+		}
+	case "RS512":
+		{
+			hash = crypto.SHA512
+		}
+	default:
+		{
+			return errors.New("rsa encoding : unknown type")
+		}
+	}
+	hasher := hash.New()
+	hasher.Write([]byte(token.Signature))
+
+	return rsa.VerifyPKCS1v15(key, hash, hasher.Sum(nil), token.Signature)
+}

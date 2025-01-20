@@ -35,7 +35,7 @@ func TestGetTokenWithClientCredentials(t *testing.T) {
 
 	now := time.Now().Unix()
 	api := model.ResourceServer{
-		Id:                       random.NewString(32),
+		Id:                       uuid.New(),
 		Name:                     "test_api",
 		Url:                      "http://example.com",
 		Type:                     model.ResourceServerTypeCustomServer,
@@ -105,7 +105,7 @@ func TestAuthorizeByCode(t *testing.T) {
 	// Create an api to be used for audience
 	now := time.Now().Unix()
 	resourceServer := model.ResourceServer{
-		Id:                       random.NewString(32),
+		Id:                       uuid.New(),
 		Name:                     "test123",
 		Url:                      "http://example.com",
 		Type:                     model.ResourceServerTypeCustomServer,
@@ -166,7 +166,7 @@ func TestGetTokenWithCode(t *testing.T) {
 
 	now := time.Now().Unix()
 	resourceServer := model.ResourceServer{
-		Id:                       random.NewString(32),
+		Id:                       uuid.New(),
 		Name:                     "test123",
 		Url:                      "https://example.com",
 		Type:                     model.ResourceServerTypeCustomServer,

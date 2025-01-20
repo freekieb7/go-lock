@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/gob"
@@ -15,9 +16,9 @@ import (
 
 	"github.com/freekieb7/go-lock/pkg/data/model"
 	"github.com/freekieb7/go-lock/pkg/data/store"
-	"github.com/freekieb7/go-lock/pkg/generator"
 	"github.com/freekieb7/go-lock/pkg/http/encoding"
 	"github.com/freekieb7/go-lock/pkg/jwt"
+	"github.com/freekieb7/go-lock/pkg/jwt/helper"
 	"github.com/freekieb7/go-lock/pkg/random"
 	"github.com/freekieb7/go-lock/pkg/session"
 	"github.com/freekieb7/go-lock/pkg/settings"
@@ -218,7 +219,7 @@ func OAuthAuthorize(
 				return
 			}
 
-			supportedScopes := strings.Split(resourceServer.Scopes+" offline_access", " ")
+			supportedScopes := strings.Split(resourceServer.Scopes+" offline_access openid profile email", " ")
 			scopes := strings.Split(scopeRaw, " ")
 			for _, scope := range scopes {
 				if !slices.Contains(supportedScopes, scope) {
@@ -338,13 +339,6 @@ func OAuthAuthorize(
 	)
 }
 
-type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    uint32 `json:"expires_in"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-}
-
 func OAuthToken(
 	settings *settings.Settings,
 	clientStore *store.ClientStore,
@@ -353,8 +347,82 @@ func OAuthToken(
 	resourceServerStore *store.ResourceServerStore,
 	userStore *store.UserStore,
 	refreshTokenStore *store.RefreshTokenStore,
-	tokenGenerator *generator.TokenGenerator,
 ) http.Handler {
+	type tokenResponseBody struct {
+		AccessToken  string `json:"access_token"`
+		TokenType    string `json:"token_type"`
+		ExpiresIn    uint32 `json:"expires_in"`
+		RefreshToken string `json:"refresh_token,omitempty"`
+		IdToken      string `json:"id_token,omitempty"`
+	}
+
+	generateUserTokensResponseBody := func(ctx context.Context, scopes []string, user model.User, client model.Client, resourceServer model.ResourceServer) (tokenResponseBody, error) {
+		var responseBody tokenResponseBody
+		responseBody.TokenType = "Bearer"
+
+		jwks, err := jwksStore.FirstActive(ctx)
+		if err != nil {
+			panic(err)
+		}
+
+		jwtBuilder := helper.NewJwtBuilder()
+
+		now := time.Now()
+		var expiresInSeconds uint32 = 3600
+
+		accessToken := jwtBuilder.
+			SetIssuer(settings.Host).
+			SetAudience(resourceServer.Url).
+			SetInitiatedAt(now.Unix()).
+			SetNotBefore(now.Unix()).
+			SetExpiresAt(now.Add(time.Second * time.Duration(expiresInSeconds)).Unix()).
+			Build()
+
+		signedAccessToken, err := jwt.Encode(accessToken, jwks)
+		if err != nil {
+			return responseBody, err
+		}
+		responseBody.AccessToken = signedAccessToken
+		responseBody.ExpiresIn = expiresInSeconds
+
+		if slices.Contains(scopes, "offline_access") {
+			refreshToken := model.RefreshToken{
+				Id:               uuid.New(),
+				ClientId:         client.Id,
+				UserId:           user.Id,
+				Scope:            strings.Join(scopes, " "),
+				ResourceServerId: resourceServer.Id,
+				CreatedAt:        time.Now().Unix(),
+				ExpiresAt:        time.Now().Add(model.RefreshTokenExpiresIn).Unix(),
+			}
+			if err := refreshTokenStore.Create(ctx, refreshToken); err != nil {
+				return responseBody, err
+			}
+
+			responseBody.RefreshToken = refreshToken.Id.String()
+		}
+
+		if slices.Contains(scopes, "openid") {
+			idToken := jwtBuilder.
+				Reset().
+				SetIssuer(settings.Host).
+				SetAudience(client.Id.String()).
+				SetSubject(user.Id.String()).
+				SetInitiatedAt(now.Unix()).
+				SetExpiresAt(now.Add(time.Second * time.Duration(expiresInSeconds)).Unix()).
+				Build()
+
+			signedIdToken, err := jwt.Encode(idToken, jwks)
+			if err != nil {
+				return responseBody, err
+			}
+
+			responseBody.IdToken = signedIdToken
+		}
+
+		return responseBody, nil
+	}
+
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodPost {
@@ -418,6 +486,8 @@ func OAuthToken(
 								return
 							}
 
+							log.Println(err)
+
 							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
 								ErrOAuthServerError,
 								"Internal server error, please try again",
@@ -443,6 +513,8 @@ func OAuthToken(
 								return
 							}
 
+							log.Println(err)
+
 							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
 								ErrOAuthServerError,
 								"Internal server error, please try again",
@@ -450,44 +522,28 @@ func OAuthToken(
 							return
 						}
 
-						jwkSets, err := jwksStore.All(r.Context())
+						jwks, err := jwksStore.FirstActive(r.Context())
 						if err != nil {
 							panic(err)
 						}
 
-						if len(jwkSets) < 1 {
-							panic("no jwk sets available")
-						}
-
-						jwks := jwkSets[len(jwkSets)-1] // Take last
-
-						privateKey, err := jwt.ParseRsaPrivateKey(jwks.PrivateKey)
-						if err != nil {
-							panic(err)
-						}
-
-						now := time.Now().UTC()
+						now := time.Now()
 						var expiresInSeconds uint32 = 3600
 
-						signedToken, err := jwt.Encode(jwt.Token{
-							Header: map[string]any{
-								"typ": "JWT",
-								"alg": "RS256",
-								"kid": jwks.Id,
-							},
-							Payload: map[string]any{
-								"iss": settings.Host,
-								"exp": now.Add(time.Second * time.Duration(expiresInSeconds)).Unix(),
-								"iat": now.Unix(),
-								"nbf": now.Unix(),
-							},
-						}, privateKey)
+						accessToken := helper.NewJwtBuilder().
+							SetIssuer(settings.Host).
+							SetAudience(client.Id.String()).
+							SetInitiatedAt(now.Unix()).
+							SetExpiresAt(now.Add(time.Second * time.Duration(expiresInSeconds)).Unix()).
+							Build()
+
+						signedAccessToken, err := jwt.Encode(accessToken, jwks)
 						if err != nil {
 							panic(err)
 						}
 
-						encoding.Encode(w, http.StatusOK, TokenResponse{
-							AccessToken: signedToken,
+						encoding.Encode(w, http.StatusOK, tokenResponseBody{
+							AccessToken: signedAccessToken,
 							TokenType:   "Bearer",
 							ExpiresIn:   expiresInSeconds,
 						})
@@ -599,6 +655,8 @@ func OAuthToken(
 								return
 							}
 
+							log.Println(err)
+
 							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
 								ErrOAuthServerError,
 								"Internal server error, please try again",
@@ -673,7 +731,7 @@ func OAuthToken(
 							}
 						}
 
-						supportedScopes := strings.Split(resourceServer.Scopes+" offline_access", " ")
+						supportedScopes := strings.Split(resourceServer.Scopes+" offline_access openid profile email", " ")
 						scopes := strings.Split(authorizationCode.Scope, " ")
 						for _, scope := range scopes {
 							if !slices.Contains(supportedScopes, scope) {
@@ -687,6 +745,7 @@ func OAuthToken(
 
 						user, err := userStore.GetById(r.Context(), authorizationCode.UserId)
 						if err != nil {
+							log.Println(err)
 							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
 								ErrOAuthServerError,
 								"Internal server error, please try again",
@@ -694,35 +753,16 @@ func OAuthToken(
 							return
 						}
 
-						accessToken, expiresInSeconds, err := tokenGenerator.GenerateAccessToken(r.Context(), user.Id, resourceServer.Url, authorizationCode.Scope)
+						generatedReponseBody, err := generateUserTokensResponseBody(r.Context(), scopes, user, client, resourceServer)
 						if err != nil {
-							panic(err)
+							log.Println(err)
+							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
+								ErrOAuthServerError,
+								"Internal server error, please try again",
+							})
+							return
 						}
-
-						responsePayload := TokenResponse{
-							AccessToken: accessToken,
-							TokenType:   "Bearer",
-							ExpiresIn:   expiresInSeconds,
-						}
-
-						if slices.Contains(scopes, "offline_access") {
-							refreshToken := model.RefreshToken{
-								Id:        uuid.New(),
-								ClientId:  client.Id,
-								UserId:    user.Id,
-								Scope:     authorizationCode.Scope,
-								Audience:  resourceServer.Url,
-								CreatedAt: time.Now().Unix(),
-								ExpiresAt: time.Now().Add(model.RefreshTokenExpiresIn).Unix(),
-							}
-							if err := refreshTokenStore.Create(r.Context(), refreshToken); err != nil {
-								panic(err)
-							}
-
-							responsePayload.RefreshToken = refreshToken.Id.String()
-						}
-
-						encoding.Encode(w, http.StatusOK, responsePayload)
+						encoding.Encode(w, http.StatusOK, generatedReponseBody)
 						return
 					}
 				case "refresh_token":
@@ -836,12 +876,12 @@ func OAuthToken(
 							return
 						}
 
-						currentRefreshToken, err := refreshTokenStore.GetById(r.Context(), refreshTokenId, clientId)
+						refreshToken, err := refreshTokenStore.GetById(r.Context(), refreshTokenId, clientId)
 						if err != nil {
 							panic(err)
 						}
 
-						if time.Now().Unix() > currentRefreshToken.ExpiresAt {
+						if time.Now().Unix() > refreshToken.ExpiresAt {
 							encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
 								ErrOAuthInvalidRequest,
 								fmt.Sprintf("Expired refresh token : %s", refreshTokenRaw),
@@ -849,32 +889,62 @@ func OAuthToken(
 							return
 						}
 
-						accessToken, expiresInSeconds, err := tokenGenerator.GenerateAccessToken(r.Context(), currentRefreshToken.UserId, currentRefreshToken.Audience, currentRefreshToken.Scope)
+						user, err := userStore.GetById(r.Context(), refreshToken.UserId)
 						if err != nil {
-							panic(err)
+							if errors.Is(err, store.ErrUserNotFound) {
+								encoding.Encode(w, http.StatusForbidden, OAuthErrorResponse{
+									ErrOAuthAccessDenied,
+									fmt.Sprintf("User not found : %s", user.Id),
+								})
+								return
+							}
+
+							log.Println(err)
+							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
+								ErrOAuthServerError,
+								"Internal server error",
+							})
+							return
 						}
 
-						newRefreshToken := model.RefreshToken{
-							Id:        uuid.New(),
-							ClientId:  currentRefreshToken.ClientId,
-							UserId:    currentRefreshToken.UserId,
-							Scope:     currentRefreshToken.Scope,
-							Audience:  currentRefreshToken.Audience,
-							CreatedAt: time.Now().Unix(),
-							ExpiresAt: time.Now().Add(model.RefreshTokenExpiresIn).Unix(),
+						resourceServer, err := resourceServerStore.GetById(r.Context(), refreshToken.ResourceServerId)
+						if err != nil {
+							if errors.Is(err, store.ErrUserNotFound) {
+								encoding.Encode(w, http.StatusForbidden, OAuthErrorResponse{
+									ErrOAuthAccessDenied,
+									fmt.Sprintf("Invalid audience"),
+								})
+								return
+							}
+
+							log.Println(err)
+							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
+								ErrOAuthServerError,
+								"Internal server error",
+							})
+							return
 						}
 
-						refreshTokenStore.DeleteById(r.Context(), currentRefreshToken.Id, currentRefreshToken.ClientId)
-						if err := refreshTokenStore.Create(r.Context(), newRefreshToken); err != nil {
-							panic(err)
+						generatedReponseBody, err := generateUserTokensResponseBody(r.Context(), strings.Split(refreshToken.Scope, " "), user, client, resourceServer)
+						if err != nil {
+							log.Println(err)
+							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
+								ErrOAuthServerError,
+								"Internal server error, please try again",
+							})
+							return
 						}
 
-						encoding.Encode(w, http.StatusOK, TokenResponse{
-							AccessToken:  accessToken,
-							TokenType:    "Bearer",
-							ExpiresIn:    expiresInSeconds,
-							RefreshToken: newRefreshToken.Id.String(),
-						})
+						if err := refreshTokenStore.DeleteById(r.Context(), refreshToken.Id, refreshToken.ClientId); err != nil {
+							log.Println(err)
+							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
+								ErrOAuthServerError,
+								"Internal server error, please try again",
+							})
+							return
+						}
+
+						encoding.Encode(w, http.StatusOK, generatedReponseBody)
 						return
 					}
 				default:

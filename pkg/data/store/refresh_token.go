@@ -26,11 +26,11 @@ type RefreshTokenStore struct {
 }
 
 func (store *RefreshTokenStore) Create(ctx context.Context, refreshToken model.RefreshToken) error {
-	_, err := store.db.ExecContext(ctx, "INSERT INTO tbl_refresh_token (id, client_id, user_id, audience, scope, expires_at, created_at) values(?,?,?,?,?,?,?)",
+	_, err := store.db.ExecContext(ctx, "INSERT INTO tbl_refresh_token (id, client_id, user_id, resource_server_id, scope, expires_at, created_at) values(?,?,?,?,?,?,?)",
 		refreshToken.Id,
 		refreshToken.ClientId,
 		refreshToken.UserId,
-		refreshToken.Audience,
+		refreshToken.ResourceServerId,
 		refreshToken.Scope,
 		refreshToken.ExpiresAt,
 		refreshToken.CreatedAt,
@@ -50,10 +50,10 @@ func (store *RefreshTokenStore) Create(ctx context.Context, refreshToken model.R
 }
 
 func (store *RefreshTokenStore) GetById(ctx context.Context, id, clientId uuid.UUID) (*model.RefreshToken, error) {
-	row := store.db.QueryRowContext(ctx, "SELECT id, client_id, user_id, audience, scope, expires_at, created_at FROM tbl_refresh_token WHERE id = ? AND client_id = ? LIMIT 1;", id, clientId)
+	row := store.db.QueryRowContext(ctx, "SELECT id, client_id, user_id, resource_server_id, scope, expires_at, created_at FROM tbl_refresh_token WHERE id = ? AND client_id = ? LIMIT 1;", id, clientId)
 
 	var refreshToken model.RefreshToken
-	if err := row.Scan(&refreshToken.Id, &refreshToken.ClientId, &refreshToken.UserId, &refreshToken.Audience, &refreshToken.Scope, &refreshToken.ExpiresAt, &refreshToken.CreatedAt); err != nil {
+	if err := row.Scan(&refreshToken.Id, &refreshToken.ClientId, &refreshToken.UserId, &refreshToken.ResourceServerId, &refreshToken.Scope, &refreshToken.ExpiresAt, &refreshToken.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrResourceServerNotFound
 		}

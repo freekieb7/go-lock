@@ -1,23 +1,26 @@
-{{define "title" }}Home{{ end }}
+{{define "title" }}New user{{ end }}
 
 {{define "content"}}
 {{ template "sidebar" . }}
 
 <div class="container">
+    <div class="py-2">
+        <a href="/users/create" class="btn btn-primary">Create</a>
+    </div>
     <table class="table">
         <thead>
             <tr>
+                <th></th>
                 <th scope="col">Name</th>
-                <th scope="col">Url</th>
-                <th scope="col">Type</th>
+                <th scope="col">Email</th>
             </tr>
         </thead>
         <tbody>
-            {{ range .ResourceServers }}
+            {{ range .Users }}
             <tr>
+                <td><a href="/users/{{ .Id }}">x</a></td>
                 <td>{{ .Name }}</td>
-                <td>{{ .Url }}</td>
-                <td>{{ .Type }}</td>
+                <td>{{ .Email }}</td>
             </tr>
             {{ end }}
         </tbody>

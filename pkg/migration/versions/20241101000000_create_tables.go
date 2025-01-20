@@ -5,9 +5,8 @@ import (
 	"time"
 
 	"github.com/freekieb7/go-lock/pkg/data/model"
-	"github.com/freekieb7/go-lock/pkg/jwt"
+	"github.com/freekieb7/go-lock/pkg/jwt/helper"
 	"github.com/freekieb7/go-lock/pkg/migration"
-	"github.com/freekieb7/go-lock/pkg/random"
 	"github.com/freekieb7/go-lock/pkg/settings"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -30,13 +29,13 @@ func (*migration20241101000000) Identifier() string {
 func (m *migration20241101000000) Up() []migration.Statement {
 	now := time.Now().Unix()
 
-	jwks, err := jwt.GenerateRsaJwks()
+	jwks, err := helper.GenerateRsaJwks()
 	if err != nil {
 		panic(err)
 	}
 
 	resourceServer := model.ResourceServer{
-		Id:                       random.NewString(32),
+		Id:                       uuid.New(),
 		Name:                     "Auth Management API",
 		Url:                      m.Settings.Host + "/api",
 		Type:                     model.ResourceServerTypeSystemServer,
@@ -70,6 +69,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 		Username:     "admin",
 		Email:        "admin@localhost",
 		PasswordHash: passwordHash,
+		Type:         model.UserTypeSystem,
 		CreatedAt:    time.Now().Unix(),
 		UpdatedAt:    time.Now().Unix(),
 		DeletedAt:    0,
@@ -145,11 +145,13 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			username TEXT NOT NULL,
 	        email TEXT NOT NULL,
 			password_hash TEXT NOT NULL,
+			type TEXT NOT NULL,
 			created_at INT NOT NULL,
 			updated_at INT NOT NULL,
 			deleted_at INT NOT NULL,
 	        PRIMARY KEY(id),
-	        UNIQUE(email)
+	        UNIQUE(email),
+			UNIQUE(username)
 	    );`,
 			Arguments: []any{},
 		},
@@ -166,7 +168,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			id TEXT NOT NULL,
 			client_id TEXT NOT NULL,
 			user_id TEXT NOT NULL,
-			audience TEXT NOT NULL,
+			resource_server_id TEXT NOT NULL,
 			scope TEXT NOT NULL,
 			created_at INT NOT NULL,
 			expires_at INT NOT NULL,
@@ -187,8 +189,8 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			Arguments: []any{client.Id, client.Secret, client.Name, client.Type, client.IsConfidential, client.RedirectUrls, client.CreatedAt, client.UpdatedAt, client.DeletedAt},
 		},
 		{
-			Query:     `INSERT INTO tbl_user (id, name, username, email, password_hash, created_at, updated_at, deleted_at) VALUES (?,?,?,?,?,?,?,?);`,
-			Arguments: []any{user.Id, user.Name, user.Username, user.Email, user.PasswordHash, user.CreatedAt, user.UpdatedAt, user.DeletedAt},
+			Query:     `INSERT INTO tbl_user (id, name, username, email, password_hash, type, created_at, updated_at, deleted_at) VALUES (?,?,?,?,?,?,?,?,?);`,
+			Arguments: []any{user.Id, user.Name, user.Username, user.Email, user.PasswordHash, user.Type, user.CreatedAt, user.UpdatedAt, user.DeletedAt},
 		},
 	}
 

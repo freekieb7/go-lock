@@ -10,7 +10,6 @@ import (
 
 	"github.com/freekieb7/go-lock/pkg/data/data_source/database"
 	"github.com/freekieb7/go-lock/pkg/data/store"
-	"github.com/freekieb7/go-lock/pkg/generator"
 	"github.com/freekieb7/go-lock/pkg/oauth"
 	"github.com/freekieb7/go-lock/pkg/settings"
 )
@@ -26,7 +25,6 @@ type Container struct {
 	UserStore              *store.UserStore
 	RefreshTokenStore      *store.RefreshTokenStore
 	JwksStore              *store.JwksStore
-	TokenGenerator         *generator.TokenGenerator
 	OAuthProvider          *oauth.OAuthProvider
 }
 
@@ -51,9 +49,6 @@ func New(ctx context.Context) *Container {
 	userStore := store.NewUserStore(db)
 	refreshTokenStore := store.NewRefreshTokenStore(db)
 
-	// Generators
-	tokenGenerator := generator.NewTokenGenerator(settings, jwksStore)
-
 	// Providers
 	oauthProvider := oauth.NewOAuthProvider(settings.ClientId.String(), settings.ClientSecret, settings.Host+"/auth/oauth/authorize", settings.Host+"/auth/oauth/token", settings.Host+"/callback", settings.Host+"/api")
 
@@ -68,7 +63,6 @@ func New(ctx context.Context) *Container {
 		UserStore:              userStore,
 		RefreshTokenStore:      refreshTokenStore,
 		JwksStore:              jwksStore,
-		TokenGenerator:         tokenGenerator,
 		OAuthProvider:          oauthProvider,
 	}
 }
