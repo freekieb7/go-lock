@@ -6,37 +6,16 @@ import (
 	"github.com/google/uuid"
 )
 
-type ClientType string
-
-const (
-	ClientTypeSystem ClientType = "system"
-	ClientTypeCustom ClientType = "custom"
-)
-
-func (t ClientType) UserFriendlyName() string {
-	switch t {
-	case ClientTypeSystem:
-		{
-			return "System"
-		}
-	case ClientTypeCustom:
-		{
-			return "Custom"
-		}
-	}
-
-	return "Unknown"
-}
-
 type Client struct {
 	Id             uuid.UUID
 	Secret         string
-	Type           ClientType
+	IsSystem       bool
 	Name           string
+	Description    string
 	RedirectUrls   string
+	LogoUrl        string
 	CreatedAt      int64
 	UpdatedAt      int64
-	DeletedAt      int64
 	IsConfidential bool
 }
 

@@ -9,37 +9,21 @@ const (
 	// SigningAlgorithmHS256 SigningAlgorithm = "HS256" // Symmetric algorithm
 )
 
-type ResourceServerType string
-
-const (
-	ResourceServerTypeSystemServer = "system"
-	ResourceServerTypeCustomServer = "custom"
-)
-
-func (t ResourceServerType) UserFriendlyName() string {
-	switch t {
-	case ResourceServerTypeCustomServer:
-		{
-			return "Custom"
-		}
-	case ResourceServerTypeSystemServer:
-		{
-			return "System"
-		}
-	}
-
-	return "Unknown"
-}
-
 type ResourceServer struct {
 	Id                       uuid.UUID
 	Name                     string
+	Description              string
 	Url                      string
-	Type                     ResourceServerType
+	IsSystem                 bool
 	SigningAlgorithm         SigningAlgorithm
-	Scopes                   string
 	AllowSkippingUserConsent bool
+	AllowOfflineAccess       bool
+	Scopes                   []ResourceServerScope
 	CreatedAt                int64
 	UpdatedAt                int64
-	DeletedAt                int64
+}
+
+type ResourceServerScope struct {
+	Value       string
+	Description string
 }

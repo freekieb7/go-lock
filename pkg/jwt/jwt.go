@@ -18,42 +18,58 @@ type Token struct {
 
 func New() Token {
 	return Token{
-		Header:  make(map[string]any),
-		Payload: make(map[string]any),
+		Header:    make(map[string]any),
+		Payload:   make(map[string]any),
+		Signature: make([]byte, 0),
 	}
 }
 
-func Encode(token Token, key any) (string, error) {
+func Sign(token Token, key any) (string, error) {
 	token.Header["typ"] = "JWT"
 
+	var err error
+	var sig []byte
 	switch k := key.(type) {
 	case model.Jwks:
 		{
-			privateKey, err := ParseRsaPrivateKey(k.PrivateKey)
+			privateKey, err := ParseRSAPrivateKeyFromPEM(k.PrivateKey)
 			if err != nil {
 				return "", err
 			}
 
 			token.Header["kid"] = k.Id
 
-			return encodeWithRSA(token, privateKey)
+			sig, err = SignWithRSAPublicKey(token, privateKey)
 		}
 	case *rsa.PrivateKey:
 		{
-			return encodeWithRSA(token, k)
+			sig, err = SignWithRSAPublicKey(token, k)
 		}
 	default:
 		{
 			return "", errors.New("jwt encoding: invalid key")
 		}
 	}
+
+	h, err := json.Marshal(token.Header)
+	if err != nil {
+		return "", err
+	}
+
+	c, err := json.Marshal(token.Payload)
+	if err != nil {
+		return "", err
+	}
+
+	signingString := base64.RawURLEncoding.EncodeToString(h) + "." + base64.RawURLEncoding.EncodeToString(c) + "." + base64.RawURLEncoding.EncodeToString(sig)
+	return signingString, nil
 }
 
-func VerifySignature(token Token, key any) error {
+func Verify(token Token, key any) error {
 	switch k := key.(type) {
 	case model.Jwks:
 		{
-			publicKey, err := ParseRsaPublicKey(k.PublicKey)
+			publicKey, err := ParseRSAPublicKeyFromPEM(k.PublicKey)
 			if err != nil {
 				return err
 			}
@@ -74,7 +90,7 @@ func VerifySignature(token Token, key any) error {
 func Decode(token string) (Token, error) {
 	var decodedToken Token
 	tokenParts := strings.Split(token, ".")
-	if len(token) != 3 {
+	if len(tokenParts) != 3 {
 		return decodedToken, errors.New("invalid token provided")
 	}
 
@@ -88,7 +104,10 @@ func Decode(token string) (Token, error) {
 		return decodedToken, err
 	}
 
-	signature, err := base64.RawStdEncoding.DecodeString(tokenParts[2])
+	signature, err := base64.RawURLEncoding.DecodeString(tokenParts[2])
+	if err != nil {
+		return decodedToken, err
+	}
 
 	if err := json.Unmarshal(header, &decodedToken.Header); err != nil {
 		return decodedToken, err

@@ -28,7 +28,7 @@ import (
 // 	SigningAlgorithmNone
 // )
 
-func encodeWithRSA(token Token, key *rsa.PrivateKey) (string, error) {
+func signWithRSA(token Token, key *rsa.PrivateKey) (string, error) {
 	var hash crypto.Hash
 	switch key.Size() {
 	case 256:

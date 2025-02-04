@@ -15,6 +15,18 @@ type Validator interface {
 	Valid(ctx context.Context) (problems map[string]string)
 }
 
+type errorMessage struct {
+	Error       string `json:"error"`
+	Description string `json:"description"`
+}
+
+func EncodeError(w http.ResponseWriter, status int, err string, description string) error {
+	return Encode(w, status, errorMessage{
+		Error:       err,
+		Description: description,
+	})
+}
+
 func Encode[T any](w http.ResponseWriter, status int, v T) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -22,6 +34,7 @@ func Encode[T any](w http.ResponseWriter, status int, v T) error {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		return fmt.Errorf("encode json: %w", err)
 	}
+
 	return nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/freekieb7/go-lock/pkg/data/store"
@@ -16,19 +17,22 @@ import (
 	"github.com/freekieb7/go-lock/pkg/jwt"
 	"github.com/freekieb7/go-lock/pkg/oauth"
 	"github.com/freekieb7/go-lock/pkg/session"
-	"github.com/freekieb7/go-lock/pkg/settings"
 	"github.com/google/uuid"
 )
 
-const sessionCookieKey string = "SID"
-const defaultScope string = "offline_access openid"
+type Key string
 
-func authenticatedMiddleware(settings *settings.Settings, oauthProvider *oauth.OAuthProvider, sessionStore *store.SessionStore, next http.Handler) http.Handler {
+const sessionCookieKey string = "SID"
+
+// Forces the user to be session/cookie authenticated, otherwise redirect to login
+func authenticatedBySessionMiddleware(oauthProvider *oauth.OAuthProvider, sessionStore *store.SessionStore, next http.Handler) http.Handler {
+	const defaultScope string = "offline_access openid"
+
 	return sessionMiddleware(sessionStore, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := session.FromRequest(r)
 
 		// Force user to be signed in
-		if !sess.HasUser() {
+		if !sess.HasAppUser() {
 			url, state := oauthProvider.AuthrorizationUrl(defaultScope)
 			sess.Set("state", state)
 
@@ -37,7 +41,7 @@ func authenticatedMiddleware(settings *settings.Settings, oauthProvider *oauth.O
 			w.WriteHeader(http.StatusSeeOther)
 			return
 		}
-		user := sess.User()
+		user := sess.AppUser()
 
 		// Refresh tokens if expired
 		if user.TokenExpiresAt <= time.Now().Unix() {
@@ -67,60 +71,10 @@ func authenticatedMiddleware(settings *settings.Settings, oauthProvider *oauth.O
 				panic(err)
 			}
 
-			// todo validate token
-			// issuer := idToken.Payload["iss"].(string)
-			// if issuer != settings.Host {
-			// 	w.WriteHeader(http.StatusForbidden)
-			// 	return
-			// }
-
-			// resOpenId, err := http.Get(issuer + "/.well-known/openid-configuration")
-			// if err != nil {
-			// 	panic(err)
-			// }
-			// defer resOpenId.Body.Close()
-
-			// type OpenIdResponseBody struct {
-			// 	JwksUri string `json:"jwks_uri"`
-			// }
-			// var openIdResponseBody OpenIdResponseBody
-			// if err := json.NewDecoder(resOpenId.Body).Decode(&openIdResponseBody); err != nil {
-			// 	panic(err)
-			// }
-
-			// resJwks, err := http.Get(openIdResponseBody.JwksUri)
-			// if err != nil {
-			// 	panic(err)
-			// }
-			// defer resJwks.Body.Close()
-
-			// type JwksResponseBody struct {
-			// 	Keys []struct {
-			// 		Kid string `json:"kid"`
-			// 	} `json:"keys"`
-			// }
-			// var jwksResponseBody JwksResponseBody
-			// if err := json.NewDecoder(resJwks.Body).Decode(&jwksResponseBody); err != nil {
-			// 	panic(err)
-			// }
-
-			// // todo proper signature check
-			// found := false
-			// for _, key := range jwksResponseBody.Keys {
-			// 	if idToken.Header["kid"].(string) == key.Kid {
-			// 		found = true
-			// 		break
-			// 	}
-			// }
-
-			// if !found {
-			// 	panic("key not found for id token")
-			// }
-
 			subject := idToken.Payload["sub"].(string)
 			userId := uuid.MustParse(subject)
 
-			sess.SetUser(session.SessionUser{
+			sess.SetAppUser(session.AppUser{
 				Id:             userId,
 				AccessToken:    tokenResponse.AccessToken,
 				TokenExpiresAt: time.Now().Add(time.Second * time.Duration(tokenResponse.ExpiresIn)).Unix(),
@@ -135,6 +89,59 @@ func authenticatedMiddleware(settings *settings.Settings, oauthProvider *oauth.O
 
 		next.ServeHTTP(w, r)
 	}))
+}
+
+// Extract token from Authorization header, and put it in the request context
+func authenticatedByTokenMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorizationHeader := r.Header.Get("Authorization")
+		if authorizationHeader == "" {
+			encoding.EncodeError(w, http.StatusBadRequest, "Invalid request", "Required header : Authorization")
+			return
+		}
+
+		accessToken, found := strings.CutPrefix(authorizationHeader, "Bearer ")
+		if !found {
+			encoding.EncodeError(w, http.StatusBadRequest, "Invalid request", fmt.Sprintf("Invalid authorization header : %s", authorizationHeader))
+			return
+		}
+
+		token, err := jwt.Decode(accessToken)
+		if err != nil {
+			log.Println(err)
+			encoding.EncodeError(w, http.StatusBadRequest, "Invalid request", fmt.Sprintf("Invalid access token : %s", accessToken))
+			return
+		}
+
+		subject, found := token.Payload["sub"]
+		if !found {
+			log.Println(err)
+			encoding.EncodeError(w, http.StatusBadRequest, "Invalid request", fmt.Sprintf("Invalid access token : %s", accessToken))
+			return
+		}
+
+		userId, err := uuid.Parse(subject.(string))
+		if err != nil {
+			log.Println(err)
+			encoding.EncodeError(w, http.StatusBadRequest, "Invalid request", fmt.Sprintf("Invalid access token : %s", accessToken))
+			return
+		}
+
+		scope := token.Payload["scope"].(string)
+		sess := session.Session{
+			Id:     uuid.Nil.String(),
+			Values: make(map[string]any),
+		}
+
+		sess.SetToken(session.Token{
+			UserId: userId,
+			Scope:  strings.Split(scope, " "),
+		})
+
+		r = r.WithContext(context.WithValue(r.Context(), session.SessionKey, &sess))
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func sessionMiddleware(sessionStore *store.SessionStore, next http.Handler) http.Handler {
@@ -209,7 +216,6 @@ func logMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 }
 
 func panicMiddleware(next http.Handler) http.Handler {
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {

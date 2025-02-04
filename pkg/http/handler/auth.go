@@ -96,7 +96,7 @@ func SigninPage(sessionStore *store.SessionStore, userStore *store.UserStore) ht
 					return
 				}
 
-				if user.DeletedAt > 0 {
+				if user.Blocked {
 					msg := url.QueryEscape("User is blocked")
 					w.Header().Add("Location", fmt.Sprintf("signin?error=%s", msg))
 					w.WriteHeader(http.StatusSeeOther)
@@ -191,4 +191,42 @@ func AuthorizePage() http.Handler {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		},
 	)
+}
+
+func Signoff() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess := session.FromRequest(r)
+
+		r.ParseForm()
+		clientIdRaw := r.FormValue("client_id")
+		returnToRaw := r.FormValue("return_to")
+
+		if clientIdRaw != "" {
+			clientId, err := uuid.Parse(clientIdRaw)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(fmt.Sprintf("Invalid client_id : %s", clientIdRaw)))
+				return
+			}
+
+			sess.DeleteClient(clientId)
+		} else {
+			sess.DeleteAllClients()
+		}
+
+		if returnToRaw != "" {
+			returnTo, err := url.Parse(returnToRaw)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(fmt.Sprintf("Invalid return_to : %s", returnToRaw)))
+				return
+			}
+
+			w.Header().Add("Location", returnTo.String())
+			w.WriteHeader(http.StatusSeeOther)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
 }

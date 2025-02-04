@@ -89,9 +89,7 @@ func Callback(oauthProvider *oauth.OAuthProvider, settings *settings.Settings, c
 					return
 				}
 
-				// todo validate tokens
-
-				sess.SetUser(session.SessionUser{
+				sess.SetAppUser(session.AppUser{
 					Id:             userId,
 					AccessToken:    tokenResponse.AccessToken,
 					TokenExpiresAt: time.Now().Add(time.Second * time.Duration(tokenResponse.ExpiresIn)).Unix(),

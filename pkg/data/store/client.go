@@ -25,8 +25,8 @@ type ClientStore struct {
 }
 
 func (store *ClientStore) Create(ctx context.Context, client model.Client) error {
-	if _, err := store.db.ExecContext(ctx, "INSERT INTO tbl_client (id, secret, name, type, is_confidential, redirect_urls, created_at, updated_at, deleted_at) values(?,?,?,?,?,?,?,?,?)",
-		client.Id, client.Secret, client.Name, client.Type, client.IsConfidential, client.RedirectUrls, client.CreatedAt, client.UpdatedAt, client.DeletedAt,
+	if _, err := store.db.ExecContext(ctx, "INSERT INTO tbl_client (id, secret, name, description, is_system, is_confidential, logo_url, redirect_urls, created_at, updated_at) values(?,?,?,?,?,?,?,?,?,?)",
+		client.Id, client.Secret, client.Name, client.Description, client.IsSystem, client.IsConfidential, client.LogoUrl, client.RedirectUrls, client.CreatedAt, client.UpdatedAt,
 	); err != nil {
 		// var sqliteErr sqlite3.Error
 		// if errors.As(err, &sqliteErr) {
@@ -40,8 +40,18 @@ func (store *ClientStore) Create(ctx context.Context, client model.Client) error
 	return nil
 }
 
+func (store *ClientStore) Update(ctx context.Context, client model.Client) error {
+	if _, err := store.db.ExecContext(ctx, "UPDATE tbl_client SET secret = ?, name = ?, is_system = ?, is_confidential = ?, redirect_urls = ?, updated_at = ? WHERE id = ?",
+		client.Secret, client.Name, client.IsSystem, client.IsConfidential, client.RedirectUrls, client.UpdatedAt, client.Id,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (store *ClientStore) All(ctx context.Context, limit, offset uint32) ([]model.Client, error) {
-	rows, err := store.db.QueryContext(ctx, "SELECT id, secret, name, type, is_confidential, redirect_urls, created_at, updated_at, deleted_at FROM tbl_client LIMIT ? OFFSET ?;", limit, offset)
+	rows, err := store.db.QueryContext(ctx, "SELECT id, secret, name, description, is_system, is_confidential, logo_url, redirect_urls, created_at, updated_at FROM tbl_client LIMIT ? OFFSET ?;", limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +60,7 @@ func (store *ClientStore) All(ctx context.Context, limit, offset uint32) ([]mode
 	clients := make([]model.Client, 0, limit)
 	for rows.Next() {
 		var client model.Client
-		if err := rows.Scan(&client.Id, &client.Secret, &client.Name, &client.Type, &client.IsConfidential, &client.RedirectUrls, &client.CreatedAt, &client.UpdatedAt, &client.DeletedAt); err != nil {
+		if err := rows.Scan(&client.Id, &client.Secret, &client.Name, &client.Description, &client.IsSystem, &client.IsConfidential, &client.LogoUrl, &client.RedirectUrls, &client.CreatedAt, &client.UpdatedAt); err != nil {
 			return nil, err
 		}
 
@@ -62,9 +72,9 @@ func (store *ClientStore) All(ctx context.Context, limit, offset uint32) ([]mode
 func (store *ClientStore) GetById(ctx context.Context, id uuid.UUID) (model.Client, error) {
 	var client model.Client
 
-	row := store.db.QueryRowContext(ctx, "SELECT id, secret, name, type, is_confidential, redirect_urls, created_at, updated_at, deleted_at FROM tbl_client WHERE id = ? LIMIT 1;", id)
+	row := store.db.QueryRowContext(ctx, "SELECT id, secret, name, description, is_system, is_confidential, logo_url, redirect_urls, created_at, updated_at FROM tbl_client WHERE id = ? LIMIT 1;", id)
 
-	if err := row.Scan(&client.Id, &client.Secret, &client.Name, &client.Type, &client.IsConfidential, &client.RedirectUrls, &client.CreatedAt, &client.UpdatedAt, &client.DeletedAt); err != nil {
+	if err := row.Scan(&client.Id, &client.Secret, &client.Name, &client.Description, &client.IsSystem, &client.IsConfidential, &client.LogoUrl, &client.RedirectUrls, &client.CreatedAt, &client.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return client, ErrClientNotFound
 		}
@@ -75,7 +85,7 @@ func (store *ClientStore) GetById(ctx context.Context, id uuid.UUID) (model.Clie
 }
 
 func (store *ClientStore) DeleteById(ctx context.Context, id uuid.UUID) error {
-	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_client WHERE id = ?;`, id)
+	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_client WHERE id = ? AND is_system = false;`, id)
 	if err != nil {
 		return err
 	}

@@ -66,16 +66,17 @@ func (migrator *Migrator) Up(ctx context.Context) error {
 	defer transaction.Rollback()
 
 	for _, migration := range migrationsChronologicallyOrdered {
-		log.Println("migrated: " + migration.Identifier())
+		log.Println("migrating: " + migration.Identifier() + " -> STARTING")
 
 		statements := migration.Up()
 		for _, statement := range statements {
 			if _, err := transaction.ExecContext(ctx, statement.Query, statement.Arguments...); err != nil {
-				return errors.Join(fmt.Errorf("migration up failed for %s", migration.Identifier()), err)
+				return errors.Join(fmt.Errorf("migrating: %s -> FAILED", migration.Identifier()), fmt.Errorf("query: %s", statement.Query), err)
 			}
 		}
 
 		transaction.ExecContext(ctx, `INSERT INTO tbl_migration (id, performed_at) VALUES (?,?);`, migration.Identifier(), time.Now().UTC().Unix(), true)
+		log.Println("migrating: " + migration.Identifier() + " -> DONE")
 	}
 
 	if err = transaction.Commit(); err != nil {

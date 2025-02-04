@@ -34,19 +34,19 @@ func TestGetTokenWithClientCredentials(t *testing.T) {
 	}
 
 	now := time.Now().Unix()
-	api := model.ResourceServer{
+	resourceServer := model.ResourceServer{
 		Id:                       uuid.New(),
-		Name:                     "test_api",
+		Name:                     "test123",
+		Description:              "test",
 		Url:                      "http://example.com",
-		Type:                     model.ResourceServerTypeCustomServer,
+		IsSystem:                 false,
 		SigningAlgorithm:         model.SigningAlgorithmRS256,
-		Scopes:                   "",
 		AllowSkippingUserConsent: false,
+		AllowOfflineAccess:       false,
 		CreatedAt:                now,
 		UpdatedAt:                now,
-		DeletedAt:                0,
 	}
-	if err := container.ResourceServerStore.Create(ctx, api); err != nil {
+	if err := container.ResourceServerStore.Create(ctx, resourceServer); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,12 +55,11 @@ func TestGetTokenWithClientCredentials(t *testing.T) {
 		Id:             uuid.New(),
 		Name:           "test123",
 		Secret:         random.NewString(32),
-		Type:           model.ClientTypeCustom,
+		IsSystem:       false,
 		RedirectUrls:   "",
 		IsConfidential: true,
 		CreatedAt:      now,
 		UpdatedAt:      now,
-		DeletedAt:      0,
 	}
 	if err := container.ClientStore.Create(ctx, client); err != nil {
 		t.Fatal(err)
@@ -73,7 +72,7 @@ func TestGetTokenWithClientCredentials(t *testing.T) {
 	r.Form.Add("grant_type", "client_credentials")
 	r.Form.Add("client_id", client.Id.String())
 	r.Form.Add("client_secret", client.Secret)
-	r.Form.Add("audience", api.Url)
+	r.Form.Add("audience", resourceServer.Url)
 
 	handler.New(container).ServeHTTP(w, r)
 
@@ -107,14 +106,14 @@ func TestAuthorizeByCode(t *testing.T) {
 	resourceServer := model.ResourceServer{
 		Id:                       uuid.New(),
 		Name:                     "test123",
+		Description:              "test",
 		Url:                      "http://example.com",
-		Type:                     model.ResourceServerTypeCustomServer,
+		IsSystem:                 false,
 		SigningAlgorithm:         model.SigningAlgorithmRS256,
-		Scopes:                   "read:email",
 		AllowSkippingUserConsent: false,
+		AllowOfflineAccess:       false,
 		CreatedAt:                now,
 		UpdatedAt:                now,
-		DeletedAt:                0,
 	}
 	if err := container.ResourceServerStore.Create(ctx, resourceServer); err != nil {
 		t.Fatal(err)
@@ -125,12 +124,11 @@ func TestAuthorizeByCode(t *testing.T) {
 		Id:             uuid.New(),
 		Name:           "test123",
 		Secret:         random.NewString(32),
-		Type:           model.ClientTypeCustom,
+		IsSystem:       false,
 		IsConfidential: true,
 		RedirectUrls:   "https://example.com",
 		CreatedAt:      now,
 		UpdatedAt:      now,
-		DeletedAt:      0,
 	}
 	if err := container.ClientStore.Create(ctx, client); err != nil {
 		t.Fatal(err)
@@ -168,14 +166,14 @@ func TestGetTokenWithCode(t *testing.T) {
 	resourceServer := model.ResourceServer{
 		Id:                       uuid.New(),
 		Name:                     "test123",
+		Description:              "test",
 		Url:                      "https://example.com",
-		Type:                     model.ResourceServerTypeCustomServer,
+		IsSystem:                 false,
 		SigningAlgorithm:         model.SigningAlgorithmRS256,
-		Scopes:                   "",
 		AllowSkippingUserConsent: false,
+		AllowOfflineAccess:       true,
 		CreatedAt:                now,
 		UpdatedAt:                now,
-		DeletedAt:                0,
 	}
 	if err := container.ResourceServerStore.Create(ctx, resourceServer); err != nil {
 		t.Fatal(err)
@@ -186,12 +184,11 @@ func TestGetTokenWithCode(t *testing.T) {
 		Id:             uuid.New(),
 		Name:           "test123",
 		Secret:         random.NewString(32),
-		Type:           model.ClientTypeCustom,
+		IsSystem:       false,
 		IsConfidential: false,
 		RedirectUrls:   "https://example.com/callback",
 		CreatedAt:      now,
 		UpdatedAt:      now,
-		DeletedAt:      0,
 	}
 	if err := container.ClientStore.Create(ctx, client); err != nil {
 		t.Fatal(err)

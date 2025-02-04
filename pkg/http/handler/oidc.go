@@ -159,12 +159,11 @@ func RegisterClient(
 					Id:             uuid.New(),
 					Secret:         random.NewString(20),
 					Name:           random.NewString(10),
-					Type:           model.ClientTypeCustom,
+					IsSystem:       false,
 					IsConfidential: false,
 					RedirectUrls:   strings.Join(requestBody.RedirectUris, " "),
 					CreatedAt:      now,
 					UpdatedAt:      now,
-					DeletedAt:      0,
 				}
 				if requestBody.ClientName != "" {
 					client.Name = requestBody.ClientName

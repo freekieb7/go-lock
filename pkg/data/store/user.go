@@ -4,14 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/freekieb7/go-lock/pkg/data/model"
 	"github.com/google/uuid"
+	"modernc.org/sqlite"
 )
 
 var (
-	ErrUserNotFound     = errors.New("user store: user not found")
-	ErrUserAleadyExists = errors.New("user store: user already exist")
+	ErrUserNotFound                  = errors.New("user store: user not found")
+	ErrUserWithEmailAlreadyExists    = errors.New("user store: email already exist")
+	ErrUserWithUsernameAlreadyExists = errors.New("user store: username already exists")
 )
 
 type UserStore struct {
@@ -25,17 +28,33 @@ func NewUserStore(db *sql.DB) *UserStore {
 }
 
 func (store *UserStore) Create(ctx context.Context, user model.User) error {
-	_, err := store.db.ExecContext(ctx, "INSERT INTO tbl_user (id, name, username, email, password_hash, type, created_at, updated_at, deleted_at) values(?,?,?,?,?,?,?,?,?);",
-		user.Id, user.Name, user.Username, user.Email, user.PasswordHash, user.Type, user.CreatedAt, user.UpdatedAt, user.DeletedAt,
+	_, err := store.db.ExecContext(ctx, "INSERT INTO tbl_user (id, name, username, email, password_hash, type, picture, email_verified, blocked, created_at, updated_at) values(?,?,?,?,?,?,?,?,?,?,?);",
+		user.Id, user.Name, user.Username, user.Email, user.PasswordHash, user.Type, user.Picture, user.EmailVerified, user.Blocked, user.CreatedAt, user.UpdatedAt,
 	)
-	return err
+	if err != nil {
+		if err, ok := err.(*sqlite.Error); ok {
+			if err.Code() == 2067 {
+				if strings.Contains(err.Error(), "username") {
+					return ErrUserWithUsernameAlreadyExists
+				}
+
+				if strings.Contains(err.Error(), "email") {
+					return ErrUserWithEmailAlreadyExists
+				}
+			}
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func (store *UserStore) GetById(ctx context.Context, id uuid.UUID) (model.User, error) {
-	row := store.db.QueryRowContext(ctx, "SELECT id, name, username, email, password_hash, type, created_at, updated_at, deleted_at FROM tbl_user WHERE id = ? LIMIT 1;", id)
+	row := store.db.QueryRowContext(ctx, "SELECT id, name, username, email, password_hash, type, picture, email_verified, blocked, created_at, updated_at FROM tbl_user WHERE id = ? LIMIT 1;", id)
 
 	var user model.User
-	if err := row.Scan(&user.Id, &user.Name, &user.Username, &user.Email, &user.PasswordHash, &user.Type, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt); err != nil {
+	if err := row.Scan(&user.Id, &user.Name, &user.Username, &user.Email, &user.PasswordHash, &user.Type, &user.Picture, &user.EmailVerified, &user.Blocked, &user.CreatedAt, &user.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return user, ErrUserNotFound
 		}
@@ -47,9 +66,9 @@ func (store *UserStore) GetById(ctx context.Context, id uuid.UUID) (model.User, 
 func (store *UserStore) GetByUsername(ctx context.Context, username string) (model.User, error) {
 	var user model.User
 
-	row := store.db.QueryRowContext(ctx, "SELECT id, name, username, email, password_hash, type, created_at, updated_at, deleted_at FROM tbl_user WHERE username = ? LIMIT 1;", username)
+	row := store.db.QueryRowContext(ctx, "SELECT id, name, username, email, password_hash, type, picture, email_verified, blocked, created_at, updated_at FROM tbl_user WHERE username = ? LIMIT 1;", username)
 
-	if err := row.Scan(&user.Id, &user.Name, &user.Username, &user.Email, &user.PasswordHash, &user.Type, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt); err != nil {
+	if err := row.Scan(&user.Id, &user.Name, &user.Username, &user.Email, &user.PasswordHash, &user.Type, &user.Picture, &user.EmailVerified, &user.Blocked, &user.CreatedAt, &user.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return user, ErrUserNotFound
 		}
@@ -61,9 +80,9 @@ func (store *UserStore) GetByUsername(ctx context.Context, username string) (mod
 func (store *UserStore) GetByEmail(ctx context.Context, email string) (model.User, error) {
 	var user model.User
 
-	row := store.db.QueryRowContext(ctx, "SELECT id, name, email, password_hash, type, created_at, updated_at, deleted_at FROM tbl_user WHERE email = ? LIMIT 1;", email)
+	row := store.db.QueryRowContext(ctx, "SELECT id, name, email, password_hash, type, created_at, updated_at, is_blocked FROM tbl_user WHERE email = ? LIMIT 1;", email)
 
-	if err := row.Scan(&user.Id, &user.Name, &user.Username, &user.Email, &user.PasswordHash, &user.Type, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt); err != nil {
+	if err := row.Scan(&user.Id, &user.Name, &user.Username, &user.Email, &user.PasswordHash, &user.Type, &user.Picture, &user.EmailVerified, &user.Blocked, &user.CreatedAt, &user.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return user, ErrUserNotFound
 		}
@@ -72,15 +91,15 @@ func (store *UserStore) GetByEmail(ctx context.Context, email string) (model.Use
 	return user, nil
 }
 
-func (store *UserStore) Update(ctx context.Context, user *model.User) error {
-	_, err := store.db.ExecContext(ctx, "UPDATE tbl_user SET name = ?, username = ?, email = ?, password_hash = ?, type = ?, created_at = ?, updated_at = ?, deleted_at = ? WHERE id = ? LIMIT 1;",
-		user.Name, user.Username, user.Email, user.PasswordHash, user.Type, user.CreatedAt, user.UpdatedAt, user.DeletedAt, user.Id,
+func (store *UserStore) Update(ctx context.Context, user model.User) error {
+	_, err := store.db.ExecContext(ctx, "UPDATE tbl_user SET name = ?, username = ?, email = ?, password_hash = ?, type = ?, picture = ?, email_verified = ?, is_blocked = ?, created_at = ?, updated_at = ? WHERE id = ?;",
+		user.Name, user.Username, user.Email, user.PasswordHash, user.Type, user.Picture, user.EmailVerified, user.Blocked, user.CreatedAt, user.UpdatedAt, user.Id,
 	)
 	return err
 }
 
-func (store *UserStore) All(ctx context.Context, limit, offset uint) ([]model.User, error) {
-	rows, err := store.db.QueryContext(ctx, "SELECT id, name, username, email, password_hash, type, created_at, updated_at, deleted_at FROM tbl_user LIMIT ? OFFSET ?;", limit, offset)
+func (store *UserStore) All(ctx context.Context, limit, offset uint32) ([]model.User, error) {
+	rows, err := store.db.QueryContext(ctx, "SELECT id, name, username, email, password_hash, type, picture, email_verified, blocked created_at, updated_at FROM tbl_user LIMIT ? OFFSET ?;", limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +108,7 @@ func (store *UserStore) All(ctx context.Context, limit, offset uint) ([]model.Us
 	var users []model.User
 	for rows.Next() {
 		var user model.User
-		if err := rows.Scan(&user.Id, &user.Name, &user.Username, &user.Email, &user.PasswordHash, &user.Type, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt); err != nil {
+		if err := rows.Scan(&user.Id, &user.Name, &user.Username, &user.Email, &user.PasswordHash, &user.Type, &user.Picture, &user.EmailVerified, &user.Blocked, &user.CreatedAt, &user.UpdatedAt); err != nil {
 			return nil, err
 		}
 		users = append(users, user)
@@ -100,6 +119,50 @@ func (store *UserStore) All(ctx context.Context, limit, offset uint) ([]model.Us
 
 func (store *UserStore) DeleteById(ctx context.Context, id uuid.UUID) error {
 	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_user WHERE id = ?;`, id)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (store *UserStore) AllAssignedScopes(ctx context.Context, userId uuid.UUID) ([]model.UserAssignedScope, error) {
+	userAssignedScopes := make([]model.UserAssignedScope, 0)
+
+	rows, err := store.db.QueryContext(ctx, `
+		SELECT p.id AS permission_id, p.description AS permission_description, rs.id AS resource_server_id, rs.name AS resource_server_name
+		FROM tbl_scopes_per_user spu
+		LEFT JOIN tbl_scope s ON spu.scope_id = s.id AND spu.resource_server_id = s.resource_server_id 
+		LEFT JOIN tbl_resource_server rs ON ppu.resource_server_id = rs.id
+		WHERE ppu.user_id = ?
+	`, userId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var userAssignedScope model.UserAssignedScope
+		if err := rows.Scan(&userAssignedScope.ScopeId, &userAssignedScope.ScopeDescription, &userAssignedScope.ResourceServerId, &userAssignedScope.ResourceServerName); err != nil {
+			return nil, err
+		}
+
+		userAssignedScopes = append(userAssignedScopes, userAssignedScope)
+	}
+	return userAssignedScopes, nil
+}
+
+func (store *UserStore) AddScope(ctx context.Context, userId uuid.UUID, resourceServerId uuid.UUID, scopeId string) error {
+	_, err := store.db.ExecContext(ctx, `INSERT INTO tbl_scopes_per_user (user_id, scope_id, resource_server_id) VALUES (?,?,?);`, userId, scopeId, resourceServerId)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (store *UserStore) RemoveScope(ctx context.Context, userId uuid.UUID, resourceServerId uuid.UUID, scopeId string) error {
+	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_scopes_per_user WHERE user_id = ? AND scope_id = ? AND resource_server_id = ?;`, userId, scopeId, resourceServerId)
 	if err != nil {
 		return err
 	}

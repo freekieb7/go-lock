@@ -73,9 +73,9 @@ func init() {
 
 // see https://openid.net/specs/openid-connect-core-1_0.html
 func OAuthAuthorize(
-	ClientStore *store.ClientStore,
-	AuthorizationCodeStore *store.AuthorizationCodeStore,
-	ResourceServerStore *store.ResourceServerStore,
+	clientStore *store.ClientStore,
+	authorizationCodeStore *store.AuthorizationCodeStore,
+	resourceServerStore *store.ResourceServerStore,
 ) http.Handler {
 	// type requestBody struct {
 	// 	Scope        string // Required
@@ -166,7 +166,7 @@ func OAuthAuthorize(
 				return
 			}
 
-			client, err := ClientStore.GetById(r.Context(), clientId)
+			client, err := clientStore.GetById(r.Context(), clientId)
 			if err != nil {
 				if errors.Is(err, store.ErrClientNotFound) {
 					encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
@@ -200,7 +200,7 @@ func OAuthAuthorize(
 				return
 			}
 
-			resourceServer, err := ResourceServerStore.GetByUrl(r.Context(), audienceRaw)
+			resourceServer, err := resourceServerStore.GetByUrl(r.Context(), audienceRaw)
 			if err != nil {
 				if errors.Is(err, store.ErrResourceServerNotFound) {
 					encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
@@ -219,13 +219,37 @@ func OAuthAuthorize(
 				return
 			}
 
-			supportedScopes := strings.Split(resourceServer.Scopes+" offline_access openid profile email", " ")
-			scopes := strings.Split(scopeRaw, " ")
-			for _, scope := range scopes {
-				if !slices.Contains(supportedScopes, scope) {
+			resourceServerScopes, err := resourceServerStore.AllScopes(r.Context(), resourceServer.Id)
+			if err != nil {
+				panic(err)
+			}
+
+			requestedScopes := strings.Split(scopeRaw, " ")
+			allResourceServerScopes := []string{"openid", "profile", "email"}
+			if resourceServer.AllowOfflineAccess {
+				allResourceServerScopes = append(allResourceServerScopes, "offline_access")
+			}
+			for _, scope := range resourceServer.Scopes {
+				allResourceServerScopes = append(allResourceServerScopes, scope.Value)
+			}
+
+			for _, requestedScope := range requestedScopes {
+				if slices.Contains(allResourceServerScopes, requestedScope) {
+					continue
+				}
+
+				found := false
+				for _, resourceServerScope := range resourceServerScopes {
+					if requestedScope == resourceServerScope.Value {
+						found = true
+						break
+					}
+				}
+
+				if !found {
 					encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
 						ErrOAuthInvalidRequest,
-						fmt.Sprintf("Invalid scope : %s", scope),
+						fmt.Sprintf("Invalid scope : %s", requestedScope),
 					})
 					return
 				}
@@ -269,7 +293,7 @@ func OAuthAuthorize(
 
 					if !session.Has("auth_request") {
 						var authRequest AuthRequest
-						authRequest.Scopes = scopes
+						authRequest.Scopes = requestedScopes
 						authRequest.UrlValues = r.URL.Query().Encode()
 
 						if session.Has("user_id") {
@@ -308,7 +332,7 @@ func OAuthAuthorize(
 						CodeChallenge:       codeChallengeRaw,
 						CodeChallengeMethod: codeChallengeMethodRaw,
 					}
-					if err := AuthorizationCodeStore.Create(r.Context(), authorizationCode); err != nil {
+					if err := authorizationCodeStore.Create(r.Context(), authorizationCode); err != nil {
 						panic(err)
 					}
 
@@ -378,7 +402,7 @@ func OAuthToken(
 			SetExpiresAt(now.Add(time.Second * time.Duration(expiresInSeconds)).Unix()).
 			Build()
 
-		signedAccessToken, err := jwt.Encode(accessToken, jwks)
+		signedAccessToken, err := jwt.Sign(accessToken, jwks)
 		if err != nil {
 			return responseBody, err
 		}
@@ -412,7 +436,7 @@ func OAuthToken(
 				SetExpiresAt(now.Add(time.Second * time.Duration(expiresInSeconds)).Unix()).
 				Build()
 
-			signedIdToken, err := jwt.Encode(idToken, jwks)
+			signedIdToken, err := jwt.Sign(idToken, jwks)
 			if err != nil {
 				return responseBody, err
 			}
@@ -537,7 +561,7 @@ func OAuthToken(
 							SetExpiresAt(now.Add(time.Second * time.Duration(expiresInSeconds)).Unix()).
 							Build()
 
-						signedAccessToken, err := jwt.Encode(accessToken, jwks)
+						signedAccessToken, err := jwt.Sign(accessToken, jwks)
 						if err != nil {
 							panic(err)
 						}
@@ -731,13 +755,29 @@ func OAuthToken(
 							}
 						}
 
-						supportedScopes := strings.Split(resourceServer.Scopes+" offline_access openid profile email", " ")
-						scopes := strings.Split(authorizationCode.Scope, " ")
-						for _, scope := range scopes {
-							if !slices.Contains(supportedScopes, scope) {
+						resourceServerScopes, err := resourceServerStore.AllScopes(r.Context(), resourceServer.Id)
+						if err != nil {
+							panic(err)
+						}
+
+						requestedScopes := strings.Split(authorizationCode.Scope, " ")
+						for _, requestedScope := range requestedScopes {
+							if slices.Contains([]string{"offline_access", "openid", "profile", "email"}, requestedScope) {
+								continue
+							}
+
+							found := false
+							for _, resourceServerScope := range resourceServerScopes {
+								if requestedScope == resourceServerScope.Value {
+									found = true
+									break
+								}
+							}
+
+							if !found {
 								encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
-									ErrOAuthInvalidScope,
-									fmt.Sprintf("Invalid scope : %s", scope),
+									ErrOAuthInvalidRequest,
+									fmt.Sprintf("Invalid scope : %s", requestedScope),
 								})
 								return
 							}
@@ -753,7 +793,7 @@ func OAuthToken(
 							return
 						}
 
-						generatedReponseBody, err := generateUserTokensResponseBody(r.Context(), scopes, user, client, resourceServer)
+						generatedReponseBody, err := generateUserTokensResponseBody(r.Context(), requestedScopes, user, client, resourceServer)
 						if err != nil {
 							log.Println(err)
 							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
@@ -912,7 +952,7 @@ func OAuthToken(
 							if errors.Is(err, store.ErrUserNotFound) {
 								encoding.Encode(w, http.StatusForbidden, OAuthErrorResponse{
 									ErrOAuthAccessDenied,
-									fmt.Sprintf("Invalid audience"),
+									"Invalid audience",
 								})
 								return
 							}
