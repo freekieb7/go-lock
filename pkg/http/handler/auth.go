@@ -20,6 +20,12 @@ import (
 func SigninPage(sessionStore *store.SessionStore, userStore *store.UserStore) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
+			sess := session.FromRequest(r)
+
+			if !sess.Has("auth_request") {
+				panic("auth context required")
+			}
+
 			if r.Method == "GET" {
 				errMsg := r.URL.Query().Get("error")
 
@@ -132,13 +138,13 @@ func SigninPage(sessionStore *store.SessionStore, userStore *store.UserStore) ht
 func AuthorizePage() http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			session := session.FromRequest(r)
+			sess := session.FromRequest(r)
 
-			if !session.Has("auth_request") {
+			if !sess.Has("auth_request") {
 				panic("auth context required")
 			}
 
-			authRequest := session.Get("auth_request").(AuthRequest)
+			authRequest := sess.Get("auth_request").(AuthRequest)
 			if authRequest.UserId == (uuid.UUID{}) {
 				w.Header().Add("Location", "/auth/signin")
 				w.WriteHeader(http.StatusSeeOther)
@@ -179,9 +185,9 @@ func AuthorizePage() http.Handler {
 					panic(authorized)
 				}
 
-				authRequest := session.Get("auth_request").(AuthRequest)
+				authRequest := sess.Get("auth_request").(AuthRequest)
 				authRequest.Authorized = authorized
-				session.Set("auth_request", authRequest)
+				sess.Set("auth_request", authRequest)
 
 				w.Header().Add("Location", "/auth/oauth/authorize")
 				w.WriteHeader(http.StatusSeeOther)

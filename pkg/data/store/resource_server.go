@@ -234,7 +234,7 @@ func (store *ResourceServerStore) AllScopes(ctx context.Context, resourceServerI
 }
 
 func (store *ResourceServerStore) AddScope(ctx context.Context, resourceServerId uuid.UUID, value, description string) error {
-	if _, err := store.db.ExecContext(ctx, "INSERT INTO tbl_scopes (resource_server_id, value, description) VALUES (?,?,?);",
+	if _, err := store.db.ExecContext(ctx, "INSERT INTO tbl_resource_server_scope (resource_server_id, value, description) VALUES (?,?,?);",
 		uuid.New(),
 		resourceServerId,
 		value,
@@ -247,7 +247,7 @@ func (store *ResourceServerStore) AddScope(ctx context.Context, resourceServerId
 }
 
 func (store *ResourceServerStore) DeleteScope(ctx context.Context, resourceServerId uuid.UUID, value string) error {
-	if _, err := store.db.ExecContext(ctx, "DELETE FROM tbl_scopes WHERE resource_server_id = ? AND value = ?;", resourceServerId, value); err != nil {
+	if _, err := store.db.ExecContext(ctx, "DELETE FROM tbl_resource_server_scope WHERE resource_server_id = ? AND value = ?;", resourceServerId, value); err != nil {
 		return err
 	}
 

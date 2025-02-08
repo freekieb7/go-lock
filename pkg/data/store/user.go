@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/freekieb7/go-lock/pkg/data/model"
@@ -98,8 +99,23 @@ func (store *UserStore) Update(ctx context.Context, user model.User) error {
 	return err
 }
 
-func (store *UserStore) All(ctx context.Context, limit, offset uint32) ([]model.User, error) {
-	rows, err := store.db.QueryContext(ctx, "SELECT id, name, username, email, password_hash, type, picture, email_verified, blocked created_at, updated_at FROM tbl_user LIMIT ? OFFSET ?;", limit, offset)
+type AllUsersOptions struct {
+	Limit  uint32
+	Offset uint32
+}
+
+func (store *UserStore) All(ctx context.Context, options AllUsersOptions) ([]model.User, error) {
+	query := "SELECT id, name, username, email, password_hash, type, picture, email_verified, blocked created_at, updated_at FROM tbl_user"
+
+	if options.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", options.Limit)
+	}
+
+	if options.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", options.Offset)
+	}
+
+	rows, err := store.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -130,11 +146,11 @@ func (store *UserStore) AllAssignedScopes(ctx context.Context, userId uuid.UUID)
 	userAssignedScopes := make([]model.UserAssignedScope, 0)
 
 	rows, err := store.db.QueryContext(ctx, `
-		SELECT p.id AS permission_id, p.description AS permission_description, rs.id AS resource_server_id, rs.name AS resource_server_name
-		FROM tbl_scopes_per_user spu
-		LEFT JOIN tbl_scope s ON spu.scope_id = s.id AND spu.resource_server_id = s.resource_server_id 
-		LEFT JOIN tbl_resource_server rs ON ppu.resource_server_id = rs.id
-		WHERE ppu.user_id = ?
+		SELECT resource_server_scope.value AS scope_value, resource_server_scope.description AS scope_description, resource_server.id AS resource_server_id, resource_server.name AS resource_server_name
+		FROM tbl_scopes_per_user user_scope
+		LEFT JOIN tbl_resource_server_scope resource_server_scope ON user_scope.resource_server_scope_value = resource_server_scope.value AND user_scope.resource_server_id = resource_server_scope.resource_server_id 
+		LEFT JOIN tbl_resource_server resource_server ON resource_server_scope.resource_server_id = resource_server.id
+		WHERE user_scope.user_id = ?
 	`, userId)
 	if err != nil {
 		return nil, err
@@ -143,7 +159,7 @@ func (store *UserStore) AllAssignedScopes(ctx context.Context, userId uuid.UUID)
 
 	for rows.Next() {
 		var userAssignedScope model.UserAssignedScope
-		if err := rows.Scan(&userAssignedScope.ScopeId, &userAssignedScope.ScopeDescription, &userAssignedScope.ResourceServerId, &userAssignedScope.ResourceServerName); err != nil {
+		if err := rows.Scan(&userAssignedScope.ScopeValue, &userAssignedScope.ScopeDescription, &userAssignedScope.ResourceServerId, &userAssignedScope.ResourceServerName); err != nil {
 			return nil, err
 		}
 

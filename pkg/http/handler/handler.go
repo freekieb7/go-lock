@@ -39,8 +39,8 @@ func New(
 	mux.Handle("/api/resource_servers", authenticatedByTokenMiddleware(ResourceServers(container.ResourceServerStore)))
 	mux.Handle("/api/resource_servers/{resource_server_id}", authenticatedByTokenMiddleware(ResourceServer(container.ResourceServerStore)))
 
-	// mux.Handle("/", authenticatedBySessionMiddleware(container.OAuthProvider, container.SessionStore, HomePage()))
-	// mux.Handle("/callback", sessionMiddleware(container.SessionStore, Callback(container.OAuthProvider, container.Settings, container.ClientStore)))
+	mux.Handle("/", authenticatedBySessionMiddleware(container.OAuthProvider, container.SessionStore, HomePage()))
+	mux.Handle("/callback", sessionMiddleware(container.SessionStore, Callback(container.OAuthProvider, container.Settings, container.ClientStore)))
 
 	// mux.Handle("/clients", authenticatedBySessionMiddleware(container.OAuthProvider, container.SessionStore, ClientsPage(container.ClientStore)))
 	// mux.Handle("/clients/create", authenticatedBySessionMiddleware(container.OAuthProvider, container.SessionStore, ClientCreatePage(container.ClientStore)))

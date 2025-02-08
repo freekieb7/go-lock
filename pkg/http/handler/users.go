@@ -3,7 +3,6 @@ package handler
 import (
 	"errors"
 	"log"
-	"math"
 	"net/http"
 	"slices"
 	"strconv"
@@ -57,8 +56,8 @@ func Users(userStore *store.UserStore) http.Handler {
 						return
 					}
 
-					var limit uint32 = math.MaxUint32
-					var offset uint32 = 0
+					var limit uint32
+					var offset uint32
 
 					if r.URL.Query().Has("limit") {
 						limit64, err := strconv.ParseUint(r.URL.Query().Get("limit"), 10, 64)
@@ -82,7 +81,10 @@ func Users(userStore *store.UserStore) http.Handler {
 						offset = uint32(offset64)
 					}
 
-					users, err := userStore.All(r.Context(), limit, offset)
+					users, err := userStore.All(r.Context(), store.AllUsersOptions{
+						Limit:  limit,
+						Offset: offset,
+					})
 					if err != nil {
 						log.Println(err)
 						w.WriteHeader(http.StatusInternalServerError)
@@ -299,7 +301,7 @@ func UserScopes(userStore *store.UserStore) http.Handler {
 	type getResponseBodyScopeDetails struct {
 		ResourceServerId   uuid.UUID `json:"resource_server_id"`
 		ResourceServerName string    `json:"resource_server_name"`
-		ScopeId            string    `json:"scope_id"`
+		ScopeValue         string    `json:"scope_value"`
 		ScopeDetails       string    `json:"scope_details"`
 	}
 
@@ -343,7 +345,7 @@ func UserScopes(userStore *store.UserStore) http.Handler {
 					responseBody.Scopes = append(responseBody.Scopes, getResponseBodyScopeDetails{
 						ResourceServerId:   scope.ResourceServerId,
 						ResourceServerName: scope.ResourceServerName,
-						ScopeId:            scope.ScopeId,
+						ScopeValue:         scope.ScopeValue,
 						ScopeDetails:       scope.ScopeDescription,
 					})
 				}

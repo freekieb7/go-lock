@@ -24,7 +24,7 @@ type User struct {
 }
 
 type UserAssignedScope struct {
-	ScopeId            string
+	ScopeValue         string
 	ScopeDescription   string
 	ResourceServerId   uuid.UUID
 	ResourceServerName string

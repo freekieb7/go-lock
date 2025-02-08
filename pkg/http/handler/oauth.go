@@ -755,20 +755,30 @@ func OAuthToken(
 							}
 						}
 
-						resourceServerScopes, err := resourceServerStore.AllScopes(r.Context(), resourceServer.Id)
+						user, err := userStore.GetById(r.Context(), authorizationCode.UserId)
+						if err != nil {
+							log.Println(err)
+							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
+								ErrOAuthServerError,
+								"Internal server error, please try again",
+							})
+							return
+						}
+
+						requestedScopes := strings.Split(authorizationCode.Scope, " ")
+						allowedScopes, err := userStore.AllAssignedScopes(r.Context(), user.Id)
 						if err != nil {
 							panic(err)
 						}
 
-						requestedScopes := strings.Split(authorizationCode.Scope, " ")
 						for _, requestedScope := range requestedScopes {
 							if slices.Contains([]string{"offline_access", "openid", "profile", "email"}, requestedScope) {
 								continue
 							}
 
 							found := false
-							for _, resourceServerScope := range resourceServerScopes {
-								if requestedScope == resourceServerScope.Value {
+							for _, userAssignedScope := range allowedScopes {
+								if requestedScope == userAssignedScope.ScopeValue {
 									found = true
 									break
 								}
@@ -781,16 +791,6 @@ func OAuthToken(
 								})
 								return
 							}
-						}
-
-						user, err := userStore.GetById(r.Context(), authorizationCode.UserId)
-						if err != nil {
-							log.Println(err)
-							encoding.Encode(w, http.StatusInternalServerError, OAuthErrorResponse{
-								ErrOAuthServerError,
-								"Internal server error, please try again",
-							})
-							return
 						}
 
 						generatedReponseBody, err := generateUserTokensResponseBody(r.Context(), requestedScopes, user, client, resourceServer)
