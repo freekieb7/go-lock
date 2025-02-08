@@ -31,6 +31,7 @@ type responseBodyResourceServer struct {
 	SigningAlgorithm         string                        `json:"signing_algorithm"`
 	AllowOfflineAccess       bool                          `json:"allow_offline_access"`
 	AllowSkippingUserConsent bool                          `json:"allow_skipping_user_consent"`
+	EnabledRbac              bool                          `json:"enabled_rbac"`
 	UpdatedAt                int64                         `json:"updated_at"`
 	CreatedAt                int64                         `json:"created_at"`
 }
@@ -49,6 +50,7 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 		SigningAlgorithm         string                        `json:"signing_algorithm"`
 		AllowOfflineAccess       bool                          `json:"allow_offline_access"`
 		AllowSkippingUserConsent bool                          `json:"allow_skipping_user_consent"`
+		EnabledRbac              bool                          `json:"enabled_rbac"`
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,16 +63,18 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 					return
 				}
 
-				resourceServers, err := resourceServerStore.All(r.Context())
+				resourceServers, resourceServersScopes, err := resourceServerStore.AllWithScopes(r.Context())
 				if err != nil {
 					panic(err)
 				}
 
 				var responseBody getResponseBody
 				responseBody.ResourceServers = make([]responseBodyResourceServer, 0, len(resourceServers))
-				for _, resourceServer := range resourceServers {
-					responseScopes := make([]httpBodyResourceServerScope, 0, len(resourceServer.Scopes))
-					for _, scope := range resourceServer.Scopes {
+				for idx, resourceServer := range resourceServers {
+					scopes := resourceServersScopes[idx]
+
+					responseScopes := make([]httpBodyResourceServerScope, 0, len(scopes))
+					for _, scope := range scopes {
 						responseScopes = append(responseScopes, httpBodyResourceServerScope{
 							Value:      scope.Value,
 							Desciption: scope.Description,
@@ -87,6 +91,7 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 						SigningAlgorithm:         string(resourceServer.SigningAlgorithm),
 						AllowSkippingUserConsent: resourceServer.AllowSkippingUserConsent,
 						AllowOfflineAccess:       resourceServer.AllowOfflineAccess,
+						EnabledRbac:              resourceServer.EnabledRbac,
 						CreatedAt:                resourceServer.CreatedAt,
 						UpdatedAt:                resourceServer.UpdatedAt,
 					})
@@ -107,9 +112,9 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 					panic(err)
 				}
 
-				scopes := make([]model.ResourceServerScope, 0, len(requestBody.Scopes))
+				scopes := make([]model.Scope, 0, len(requestBody.Scopes))
 				for _, scope := range requestBody.Scopes {
-					scopes = append(scopes, model.ResourceServerScope{
+					scopes = append(scopes, model.Scope{
 						Value:       scope.Value,
 						Description: scope.Desciption,
 					})
@@ -122,19 +127,18 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 					Description:              requestBody.Desciption,
 					Url:                      requestBody.Url,
 					IsSystem:                 false,
-					Scopes:                   scopes,
 					AllowSkippingUserConsent: requestBody.AllowSkippingUserConsent,
 					AllowOfflineAccess:       requestBody.AllowOfflineAccess,
 					SigningAlgorithm:         model.SigningAlgorithmRS256,
 					CreatedAt:                now,
 					UpdatedAt:                now,
 				}
-				if err := resourceServerStore.Create(r.Context(), resourceServer); err != nil {
+				if err := resourceServerStore.Create(r.Context(), resourceServer, scopes); err != nil {
 					panic(err)
 				}
 
-				responseScopes := make([]httpBodyResourceServerScope, 0, len(resourceServer.Scopes))
-				for _, scope := range resourceServer.Scopes {
+				responseScopes := make([]httpBodyResourceServerScope, 0, len(scopes))
+				for _, scope := range scopes {
 					responseScopes = append(responseScopes, httpBodyResourceServerScope{
 						Value:      scope.Value,
 						Desciption: scope.Description,
@@ -197,11 +201,19 @@ func ResourceServer(resourceServerStore *store.ResourceServerStore) http.Handler
 				if err != nil {
 					if errors.Is(err, store.ErrResourceServerNotFound) {
 						encoding.EncodeError(w, http.StatusNotFound, "Resource Server not found", fmt.Sprintf("Invalid Resource Server ID : %s", resourceServerId))
+						return
 					}
+
+					panic(err)
 				}
 
-				responseScopes := make([]httpBodyResourceServerScope, 0, len(resourceServer.Scopes))
-				for _, scope := range resourceServer.Scopes {
+				scopes, err := resourceServerStore.AllScopes(r.Context(), resourceServerId)
+				if err != nil {
+					panic(err)
+				}
+
+				responseScopes := make([]httpBodyResourceServerScope, 0, len(scopes))
+				for _, scope := range scopes {
 					responseScopes = append(responseScopes, httpBodyResourceServerScope{
 						Value:      scope.Value,
 						Desciption: scope.Description,
@@ -262,26 +274,29 @@ func ResourceServer(resourceServerStore *store.ResourceServerStore) http.Handler
 					resourceServer.AllowOfflineAccess = *requestBody.AllowOfflineAccess
 				}
 
+				scopes := make([]model.Scope, 0)
 				if requestBody.Scopes != nil {
 					log.Println("scopes is not nil")
-					resourceServer.Scopes = make([]model.ResourceServerScope, 0, len(requestBody.Scopes))
+					scopes := make([]model.Scope, 0, len(requestBody.Scopes))
 
 					for _, scope := range requestBody.Scopes {
-						resourceServer.Scopes = append(resourceServer.Scopes, model.ResourceServerScope{
-							Value:       scope.Value,
-							Description: scope.Desciption,
+						scopes = append(scopes, model.Scope{
+							Id:               uuid.New(),
+							ResourceServerId: resourceServer.Id,
+							Value:            scope.Value,
+							Description:      scope.Desciption,
 						})
 					}
 				}
 
 				resourceServer.UpdatedAt = time.Now().Unix()
 
-				if err := resourceServerStore.Update(r.Context(), resourceServer); err != nil {
+				if err := resourceServerStore.Update(r.Context(), resourceServer, scopes); err != nil {
 					panic(err)
 				}
 
-				responseScopes := make([]httpBodyResourceServerScope, 0, len(resourceServer.Scopes))
-				for _, scope := range resourceServer.Scopes {
+				responseScopes := make([]httpBodyResourceServerScope, 0, len(scopes))
+				for _, scope := range scopes {
 					responseScopes = append(responseScopes, httpBodyResourceServerScope{
 						Value:      scope.Value,
 						Desciption: scope.Description,

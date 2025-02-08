@@ -15,4 +15,9 @@ const (
 	ReadResourceServers   string = "read:resource_servers"
 	UpdateResourceServers string = "update:resource_servers"
 	DeleteResourceServers string = "delete:resource_servers"
+
+	CreateRoles string = "create:roles"
+	ReadRoles   string = "read:roles"
+	UpdateRoles string = "update:roles"
+	DeleteRoles string = "delete:roles"
 )

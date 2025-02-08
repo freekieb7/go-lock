@@ -25,6 +25,7 @@ type Container struct {
 	UserStore              *store.UserStore
 	RefreshTokenStore      *store.RefreshTokenStore
 	JwksStore              *store.JwksStore
+	RoleStore              *store.RoleStore
 	OAuthProvider          *oauth.OAuthProvider
 }
 
@@ -48,6 +49,7 @@ func New(ctx context.Context) *Container {
 	jwksStore := store.NewJwksStore(db)
 	userStore := store.NewUserStore(db)
 	refreshTokenStore := store.NewRefreshTokenStore(db)
+	roleStore := store.NewRoleStore(db)
 
 	// Providers
 	oauthProvider := oauth.NewOAuthProvider(settings.ClientId.String(), settings.ClientSecret, settings.Host+"/auth/oauth/authorize", settings.Host+"/auth/oauth/token", settings.Host+"/callback", settings.Host+"/api")
@@ -63,6 +65,7 @@ func New(ctx context.Context) *Container {
 		UserStore:              userStore,
 		RefreshTokenStore:      refreshTokenStore,
 		JwksStore:              jwksStore,
+		RoleStore:              roleStore,
 		OAuthProvider:          oauthProvider,
 	}
 }

@@ -79,6 +79,81 @@ func (m *migration20241101000000) Up() []migration.Statement {
 		Blocked:       false,
 	}
 
+	scopes := []model.Scope{
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.CreateClients,
+			Description:      "Create Clients",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.ReadClients,
+			Description:      "Read Clients",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.UpdateClients,
+			Description:      "Update Clients",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.DeleteClients,
+			Description:      "Delete Clients",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.CreateUsers,
+			Description:      "Create Users",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.ReadUsers,
+			Description:      "Read Users",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.UpdateUsers,
+			Description:      "Update Users",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.DeleteUsers,
+			Description:      "Delete Users",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.CreateResourceServers,
+			Description:      "Create ResourceServers",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.ReadResourceServers,
+			Description:      "Read ResourceServers",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.UpdateResourceServers,
+			Description:      "Update ResourceServers",
+		},
+		{
+			Id:               uuid.New(),
+			ResourceServerId: resourceServer.Id,
+			Value:            scope.DeleteResourceServers,
+			Description:      "Delete ResourceServers",
+		},
+	}
+
 	statements := []migration.Statement{
 		{
 			Query: `CREATE TABLE tbl_client (
@@ -179,22 +254,50 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			);`,
 		},
 		{
-			Query: `CREATE TABLE tbl_resource_server_scope (
+			Query: `CREATE TABLE tbl_scope (
+				id TEXT NOT NULL,
 				resource_server_id TEXT NOT NULL,
 				value TEXT NOT NULL,
 				description TEXT NOT NULL,
-				PRIMARY KEY (resource_server_id, value),
+				PRIMARY KEY (id),
+				UNIQUE (resource_server_id, value),
 				FOREIGN KEY (resource_server_id) REFERENCES tbl_resource_server (id) ON UPDATE CASCADE ON DELETE CASCADE
 			);`,
 		},
 		{
-			Query: `CREATE TABLE tbl_scopes_per_user (
+			Query: `CREATE TABLE tbl_scope_per_user (
 				user_id TEXT NOT NULL,
-				resource_server_id TEXT NOT NULL,
-				resource_server_scope_value TEXT NOT NULL,
-				PRIMARY KEY (user_id, resource_server_id, resource_server_scope_value),
-				FOREIGN KEY (user_id) REFERENCES tbl_user(id) ON UPDATE CASCADE ON DELETE CASCADE,
-				FOREIGN KEY (resource_server_id, resource_server_scope_value) REFERENCES tbl_resource_server_scope(resource_server_id, value) ON UPDATE CASCADE ON DELETE CASCADE
+				scope_id TEXT NOT NULL,
+				PRIMARY KEY (user_id, scope_id),
+				FOREIGN KEY (user_id) REFERENCES tbl_user (id) ON UPDATE CASCADE ON DELETE CASCADE,
+				FOREIGN KEY (scope_id) REFERENCES tbl_scope (id) ON UPDATE CASCADE ON DELETE CASCADE
+			);`,
+		},
+		{
+			Query: `CREATE TABLE tbl_role (
+				id TEXT NOT NULL,
+				name TEXT NOT NULL,
+				description TEXT NOT NULL, 
+				PRIMARY KEY (id),
+				UNIQUE (name)
+			);`,
+		},
+		{
+			Query: `CREATE TABLE tbl_scope_per_role (
+				role_id TEXT NOT NULL,
+				scope_id TEXT NOT NULL,
+				PRIMARY KEY (role_id, scope_id),
+				FOREIGN KEY (role_id) REFERENCES tbl_role (id) ON UPDATE CASCADE ON DELETE CASCADE,
+				FOREIGN KEY (scope_id) REFERENCES tbl_scope (id) ON UPDATE CASCADE ON DELETE CASCADE
+			);`,
+		},
+		{
+			Query: `CREATE TABLE tbl_role_per_user (
+				user_id TEXT NOT NULL,
+				role_id TEXT NOT NULL,
+				PRIMARY KEY (user_id, role_id),
+				FOREIGN KEY (user_id) REFERENCES tbl_user (id) ON UPDATE CASCADE ON DELETE CASCADE,
+				FOREIGN KEY (role_id) REFERENCES tbl_role (id) ON UPDATE CASCADE ON DELETE CASCADE
 			);`,
 		},
 		{
@@ -214,37 +317,37 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			Arguments: []any{user.Id, user.Name, user.Username, user.Email, user.PasswordHash, user.Type, user.Picture, user.EmailVerified, user.Blocked, user.CreatedAt, user.UpdatedAt},
 		},
 		{
-			Query: `INSERT INTO tbl_resource_server_scope (resource_server_id, value, description) VALUES (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?);`,
+			Query: `INSERT INTO tbl_scope (id, resource_server_id, value, description) VALUES (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?);`,
 			Arguments: []any{
-				resourceServer.Id, scope.CreateClients, "Create Clients",
-				resourceServer.Id, scope.ReadClients, "Read Clients",
-				resourceServer.Id, scope.UpdateClients, "Update Clients",
-				resourceServer.Id, scope.DeleteClients, "Delete Clients",
-				resourceServer.Id, scope.CreateResourceServers, "Create Resource Servers",
-				resourceServer.Id, scope.ReadResourceServers, "Read Resource Servers",
-				resourceServer.Id, scope.UpdateResourceServers, "Update Resource Servers",
-				resourceServer.Id, scope.DeleteResourceServers, "Delete Resource Servers",
-				resourceServer.Id, scope.CreateUsers, "Create Users",
-				resourceServer.Id, scope.ReadUsers, "Read Users",
-				resourceServer.Id, scope.UpdateUsers, "Update Users",
-				resourceServer.Id, scope.DeleteUsers, "Delete Users",
+				scopes[0].Id, scopes[0].ResourceServerId, scopes[0].Value, scopes[0].Description,
+				scopes[1].Id, scopes[1].ResourceServerId, scopes[1].Value, scopes[1].Description,
+				scopes[2].Id, scopes[2].ResourceServerId, scopes[2].Value, scopes[2].Description,
+				scopes[3].Id, scopes[3].ResourceServerId, scopes[3].Value, scopes[3].Description,
+				scopes[4].Id, scopes[4].ResourceServerId, scopes[4].Value, scopes[4].Description,
+				scopes[5].Id, scopes[5].ResourceServerId, scopes[5].Value, scopes[5].Description,
+				scopes[6].Id, scopes[6].ResourceServerId, scopes[6].Value, scopes[6].Description,
+				scopes[7].Id, scopes[7].ResourceServerId, scopes[7].Value, scopes[7].Description,
+				scopes[8].Id, scopes[8].ResourceServerId, scopes[8].Value, scopes[8].Description,
+				scopes[9].Id, scopes[9].ResourceServerId, scopes[9].Value, scopes[9].Description,
+				scopes[10].Id, scopes[10].ResourceServerId, scopes[10].Value, scopes[10].Description,
+				scopes[11].Id, scopes[11].ResourceServerId, scopes[11].Value, scopes[11].Description,
 			},
 		},
 		{
-			Query: `INSERT INTO tbl_scopes_per_user (user_id, resource_server_id, resource_server_scope_value) VALUES (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?), (?,?,?);`,
+			Query: `INSERT INTO tbl_scope_per_user (user_id, scope_id) VALUES (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?);`,
 			Arguments: []any{
-				user.Id, resourceServer.Id, scope.CreateClients,
-				user.Id, resourceServer.Id, scope.ReadClients,
-				user.Id, resourceServer.Id, scope.UpdateClients,
-				user.Id, resourceServer.Id, scope.DeleteClients,
-				user.Id, resourceServer.Id, scope.CreateResourceServers,
-				user.Id, resourceServer.Id, scope.ReadResourceServers,
-				user.Id, resourceServer.Id, scope.UpdateResourceServers,
-				user.Id, resourceServer.Id, scope.DeleteResourceServers,
-				user.Id, resourceServer.Id, scope.CreateUsers,
-				user.Id, resourceServer.Id, scope.ReadUsers,
-				user.Id, resourceServer.Id, scope.UpdateUsers,
-				user.Id, resourceServer.Id, scope.DeleteUsers,
+				user.Id, scopes[0].Id,
+				user.Id, scopes[1].Id,
+				user.Id, scopes[2].Id,
+				user.Id, scopes[3].Id,
+				user.Id, scopes[4].Id,
+				user.Id, scopes[5].Id,
+				user.Id, scopes[6].Id,
+				user.Id, scopes[7].Id,
+				user.Id, scopes[8].Id,
+				user.Id, scopes[9].Id,
+				user.Id, scopes[10].Id,
+				user.Id, scopes[11].Id,
 			},
 		},
 	}
@@ -256,10 +359,16 @@ func (*migration20241101000000) Down() []migration.Statement {
 
 	return []migration.Statement{
 		{
-			Query: `DROP TABLE tbl_scopes_per_user;`,
+			Query: `DROP TABLE tbl_role_per_user`,
 		},
 		{
-			Query: `DROP TABLE tbl_resource_server_scope;`,
+			Query: `DROP TABLE tbl_role`,
+		},
+		{
+			Query: `DROP TABLE tbl_scope_per_user;`,
+		},
+		{
+			Query: `DROP TABLE tbl_scope;`,
 		},
 		{
 			Query: `DROP TABLE tbl_refresh_token;`,

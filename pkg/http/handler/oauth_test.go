@@ -45,7 +45,9 @@ func TestGetTokenWithClientCredentials(t *testing.T) {
 		CreatedAt:                now,
 		UpdatedAt:                now,
 	}
-	if err := container.ResourceServerStore.Create(ctx, resourceServer); err != nil {
+	scopes := make([]model.Scope, 0)
+
+	if err := container.ResourceServerStore.Create(ctx, resourceServer, scopes); err != nil {
 		t.Fatal(err)
 	}
 

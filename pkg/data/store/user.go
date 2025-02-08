@@ -147,10 +147,10 @@ func (store *UserStore) AllAssignedScopes(ctx context.Context, userId uuid.UUID)
 
 	rows, err := store.db.QueryContext(ctx, `
 		SELECT resource_server_scope.value AS scope_value, resource_server_scope.description AS scope_description, resource_server.id AS resource_server_id, resource_server.name AS resource_server_name
-		FROM tbl_scopes_per_user user_scope
-		LEFT JOIN tbl_resource_server_scope resource_server_scope ON user_scope.resource_server_scope_value = resource_server_scope.value AND user_scope.resource_server_id = resource_server_scope.resource_server_id 
+		FROM tbl_scope_per_user scope_per_user
+		LEFT JOIN tbl_resource_server_scope resource_server_scope ON scope_per_user.resource_server_scope_value = resource_server_scope.value AND scope_per_user.resource_server_id = resource_server_scope.resource_server_id 
 		LEFT JOIN tbl_resource_server resource_server ON resource_server_scope.resource_server_id = resource_server.id
-		WHERE user_scope.user_id = ?
+		WHERE scope_per_user.user_id = ?
 	`, userId)
 	if err != nil {
 		return nil, err
@@ -169,7 +169,7 @@ func (store *UserStore) AllAssignedScopes(ctx context.Context, userId uuid.UUID)
 }
 
 func (store *UserStore) AddScope(ctx context.Context, userId uuid.UUID, resourceServerId uuid.UUID, scopeId string) error {
-	_, err := store.db.ExecContext(ctx, `INSERT INTO tbl_scopes_per_user (user_id, scope_id, resource_server_id) VALUES (?,?,?);`, userId, scopeId, resourceServerId)
+	_, err := store.db.ExecContext(ctx, `INSERT INTO tbl_scope_per_user (user_id, scope_id, resource_server_id) VALUES (?,?,?);`, userId, scopeId, resourceServerId)
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (store *UserStore) AddScope(ctx context.Context, userId uuid.UUID, resource
 }
 
 func (store *UserStore) RemoveScope(ctx context.Context, userId uuid.UUID, resourceServerId uuid.UUID, scopeId string) error {
-	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_scopes_per_user WHERE user_id = ? AND scope_id = ? AND resource_server_id = ?;`, userId, scopeId, resourceServerId)
+	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_scope_per_user WHERE user_id = ? AND scope_id = ? AND resource_server_id = ?;`, userId, scopeId, resourceServerId)
 	if err != nil {
 		return err
 	}

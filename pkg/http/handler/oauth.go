@@ -225,16 +225,16 @@ func OAuthAuthorize(
 			}
 
 			requestedScopes := strings.Split(scopeRaw, " ")
-			allResourceServerScopes := []string{"openid", "profile", "email"}
+			availableScopes := []string{"openid", "profile", "email"}
 			if resourceServer.AllowOfflineAccess {
-				allResourceServerScopes = append(allResourceServerScopes, "offline_access")
+				availableScopes = append(availableScopes, "offline_access")
 			}
-			for _, scope := range resourceServer.Scopes {
-				allResourceServerScopes = append(allResourceServerScopes, scope.Value)
+			for _, scope := range resourceServerScopes {
+				availableScopes = append(availableScopes, scope.Value)
 			}
 
 			for _, requestedScope := range requestedScopes {
-				if slices.Contains(allResourceServerScopes, requestedScope) {
+				if slices.Contains(availableScopes, requestedScope) {
 					continue
 				}
 

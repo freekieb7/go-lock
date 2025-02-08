@@ -26,14 +26,14 @@ type ResourceServerStore struct {
 	db *sql.DB
 }
 
-func (store *ResourceServerStore) Create(ctx context.Context, resourceServer model.ResourceServer) error {
+func (store *ResourceServerStore) Create(ctx context.Context, resourceServer model.ResourceServer, scopes []model.Scope) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec("INSERT INTO tbl_resource_server (id, url, name, description, is_system, signing_algorithm, allow_skipping_user_consent, allow_offline_access, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?);",
+	_, err = tx.Exec("INSERT INTO tbl_resource_server (id, url, name, description, is_system, signing_algorithm, allow_skipping_user_consent, allow_offline_access, enabled_rbac, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?);",
 		resourceServer.Id,
 		resourceServer.Url,
 		resourceServer.Name,
@@ -42,30 +42,25 @@ func (store *ResourceServerStore) Create(ctx context.Context, resourceServer mod
 		resourceServer.SigningAlgorithm,
 		resourceServer.AllowSkippingUserConsent,
 		resourceServer.AllowOfflineAccess,
+		resourceServer.EnabledRbac,
 		resourceServer.CreatedAt,
 		resourceServer.UpdatedAt,
 	)
 	if err != nil {
-		// var sqliteErr sqlite3.Error
-		// if errors.As(err, &sqliteErr) {
-		// 	if errors.Is(sqliteErr.ExtendedCode, sqlite3.ErrConstraintUnique) {
-		// 		return ErrApiDuplicate
-		// 	}
-		// }
 		return errors.Join(errors.New("resource server store: inserting resource server failed"), err)
 	}
 
-	if len(resourceServer.Scopes) > 0 {
-		query := "INSERT INTO tbl_resource_server_scope (resource_server_id, value, description) VALUES "
-		args := make([]any, 0, len(resourceServer.Scopes)*3)
+	if len(scopes) > 0 {
+		query := "INSERT INTO tbl_scope (id, resource_server_id, value, description) VALUES "
+		args := make([]any, 0, len(scopes)*4)
 
-		for idx, scope := range resourceServer.Scopes {
+		for idx, scope := range scopes {
 			if idx != 0 {
 				query += ", "
 			}
 
-			query += "(?,?,?)"
-			args = append(args, resourceServer.Id, scope.Value, scope.Description)
+			query += "(?,?,?,?)"
+			args = append(args, scope.Id, scope.ResourceServerId, scope.Value, scope.Description)
 		}
 
 		_, err = tx.Exec(query, args...)
@@ -84,20 +79,14 @@ func (store *ResourceServerStore) Create(ctx context.Context, resourceServer mod
 func (store *ResourceServerStore) GetById(ctx context.Context, id uuid.UUID) (model.ResourceServer, error) {
 	var resourceServer model.ResourceServer
 
-	row := store.db.QueryRowContext(ctx, "SELECT id, url, name, description, is_system, signing_algorithm, allow_skipping_user_consent, allow_offline_access, created_at, updated_at FROM tbl_resource_server WHERE id = ? LIMIT 1;", id)
+	row := store.db.QueryRowContext(ctx, "SELECT id, url, name, description, is_system, signing_algorithm, allow_skipping_user_consent, allow_offline_access, enabled_rbac, created_at, updated_at FROM tbl_resource_server WHERE id = ? LIMIT 1;", id)
 
-	if err := row.Scan(&resourceServer.Id, &resourceServer.Url, &resourceServer.Name, &resourceServer.Description, &resourceServer.IsSystem, &resourceServer.SigningAlgorithm, &resourceServer.AllowSkippingUserConsent, &resourceServer.AllowOfflineAccess, &resourceServer.CreatedAt, &resourceServer.UpdatedAt); err != nil {
+	if err := row.Scan(&resourceServer.Id, &resourceServer.Url, &resourceServer.Name, &resourceServer.Description, &resourceServer.IsSystem, &resourceServer.SigningAlgorithm, &resourceServer.AllowSkippingUserConsent, &resourceServer.AllowOfflineAccess, &resourceServer.EnabledRbac, &resourceServer.CreatedAt, &resourceServer.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return resourceServer, ErrResourceServerNotFound
 		}
 		return resourceServer, err
 	}
-
-	scopes, err := store.AllScopes(ctx, resourceServer.Id)
-	if err != nil {
-		return resourceServer, err
-	}
-	resourceServer.Scopes = scopes
 
 	return resourceServer, nil
 }
@@ -105,9 +94,9 @@ func (store *ResourceServerStore) GetById(ctx context.Context, id uuid.UUID) (mo
 func (store *ResourceServerStore) GetByUrl(ctx context.Context, url string) (model.ResourceServer, error) {
 	var resourceServer model.ResourceServer
 
-	row := store.db.QueryRowContext(ctx, "SELECT id, url, name, description, is_system, signing_algorithm, allow_skipping_user_consent, allow_offline_access, created_at, updated_at FROM tbl_resource_server WHERE url = ? LIMIT 1;", url)
+	row := store.db.QueryRowContext(ctx, "SELECT id, url, name, description, is_system, signing_algorithm, allow_skipping_user_consent, allow_offline_access, enabled_rbac, created_at, updated_at FROM tbl_resource_server WHERE url = ? LIMIT 1;", url)
 
-	if err := row.Scan(&resourceServer.Id, &resourceServer.Url, &resourceServer.Name, &resourceServer.Description, &resourceServer.IsSystem, &resourceServer.SigningAlgorithm, &resourceServer.AllowSkippingUserConsent, &resourceServer.AllowOfflineAccess, &resourceServer.CreatedAt, &resourceServer.UpdatedAt); err != nil {
+	if err := row.Scan(&resourceServer.Id, &resourceServer.Url, &resourceServer.Name, &resourceServer.Description, &resourceServer.IsSystem, &resourceServer.SigningAlgorithm, &resourceServer.AllowSkippingUserConsent, &resourceServer.AllowOfflineAccess, &resourceServer.EnabledRbac, &resourceServer.CreatedAt, &resourceServer.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return resourceServer, ErrResourceServerNotFound
 		}
@@ -116,14 +105,14 @@ func (store *ResourceServerStore) GetByUrl(ctx context.Context, url string) (mod
 	return resourceServer, nil
 }
 
-func (store *ResourceServerStore) Update(ctx context.Context, resourceServer model.ResourceServer) error {
+func (store *ResourceServerStore) Update(ctx context.Context, resourceServer model.ResourceServer, scopes []model.Scope) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, "UPDATE tbl_resource_server SET name = ?, description = ?, url = ?, is_system = ?, allow_skipping_user_consent = ?, allow_offline_access = ?, signing_algorithm = ?, updated_at = ? WHERE id = ?;",
+	if _, err := tx.ExecContext(ctx, "UPDATE tbl_resource_server SET name = ?, description = ?, url = ?, is_system = ?, allow_skipping_user_consent = ?, allow_offline_access = ?, signing_algorithm = ?, enabled_rbac = ?, updated_at = ? WHERE id = ?;",
 		resourceServer.Name,
 		resourceServer.Description,
 		resourceServer.Url,
@@ -131,6 +120,7 @@ func (store *ResourceServerStore) Update(ctx context.Context, resourceServer mod
 		resourceServer.AllowSkippingUserConsent,
 		resourceServer.AllowOfflineAccess,
 		resourceServer.SigningAlgorithm,
+		resourceServer.EnabledRbac,
 		resourceServer.UpdatedAt,
 		resourceServer.Id,
 	); err != nil {
@@ -138,10 +128,11 @@ func (store *ResourceServerStore) Update(ctx context.Context, resourceServer mod
 	}
 
 	// Delete all unwanted scopes
-	query := "DELETE FROM tbl_resource_server_scope WHERE resource_server_id = ? AND value NOT IN ("
-	args := make([]any, 0, 1+len(resourceServer.Scopes))
+	query := "DELETE FROM tbl_scope WHERE resource_server_id = ? AND value NOT IN ("
+	args := make([]any, 0, 1+len(scopes))
 	args = append(args, resourceServer.Id)
-	for idx, scope := range resourceServer.Scopes {
+
+	for idx, scope := range scopes {
 		if idx != 0 {
 			query += ","
 		}
@@ -155,15 +146,19 @@ func (store *ResourceServerStore) Update(ctx context.Context, resourceServer mod
 	}
 
 	// Add or update scope on conflict
-	query = "INSERT INTO tbl_resource_server_scope (resource_server_id, value, description) VALUES "
-	args = make([]any, 0, len(resourceServer.Scopes))
-	for idx, scope := range resourceServer.Scopes {
+	query = "INSERT INTO tbl_scope (id, resource_server_id, value, description) VALUES "
+	args = make([]any, 0, len(scopes))
+	for idx, scope := range scopes {
+		if scope.ResourceServerId != resourceServer.Id {
+			return fmt.Errorf("resource server store: inconsistent scope resource server id %s, expected %s", scope.ResourceServerId, resourceServer.Id)
+		}
+
 		if idx != 0 {
 			query += ","
 		}
 
-		query += "(?,?,?)"
-		args = append(args, resourceServer.Id, scope.Value, scope.Description)
+		query += "(?,?,?,?)"
+		args = append(args, scope.Id, scope.ResourceServerId, scope.Value, scope.Description)
 	}
 	query += " ON CONFLICT(resource_server_id, value) DO UPDATE SET description=excluded.description;"
 
@@ -187,43 +182,46 @@ func (store *ResourceServerStore) DeleteById(ctx context.Context, id uuid.UUID) 
 	return nil
 }
 
-func (store *ResourceServerStore) All(ctx context.Context) ([]model.ResourceServer, error) {
-	rows, err := store.db.QueryContext(ctx, "SELECT id, url, name, description, is_system, signing_algorithm, allow_skipping_user_consent, allow_offline_access, created_at, updated_at FROM tbl_resource_server;")
+func (store *ResourceServerStore) AllWithScopes(ctx context.Context) ([]model.ResourceServer, [][]model.Scope, error) {
+	rows, err := store.db.QueryContext(ctx, "SELECT id, url, name, description, is_system, signing_algorithm, allow_skipping_user_consent, allow_offline_access, enabled_rbac, created_at, updated_at FROM tbl_resource_server;")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
 
 	resourceServers := make([]model.ResourceServer, 0)
+	resourceServerScopes := make([][]model.Scope, 0)
+
 	for rows.Next() {
 		var resourceServer model.ResourceServer
-		if err := rows.Scan(&resourceServer.Id, &resourceServer.Url, &resourceServer.Name, &resourceServer.Description, &resourceServer.IsSystem, &resourceServer.SigningAlgorithm, &resourceServer.AllowSkippingUserConsent, &resourceServer.AllowOfflineAccess, &resourceServer.CreatedAt, &resourceServer.UpdatedAt); err != nil {
-			return nil, err
+		if err := rows.Scan(&resourceServer.Id, &resourceServer.Url, &resourceServer.Name, &resourceServer.Description, &resourceServer.IsSystem, &resourceServer.SigningAlgorithm, &resourceServer.AllowSkippingUserConsent, &resourceServer.AllowOfflineAccess, &resourceServer.EnabledRbac, &resourceServer.CreatedAt, &resourceServer.UpdatedAt); err != nil {
+			return nil, nil, err
 		}
+		resourceServers = append(resourceServers, resourceServer)
 
 		scopes, err := store.AllScopes(ctx, resourceServer.Id)
 		if err != nil {
-			return resourceServers, err
+			return nil, nil, err
 		}
-		resourceServer.Scopes = scopes
+		resourceServerScopes = append(resourceServerScopes, scopes)
 
-		resourceServers = append(resourceServers, resourceServer)
 	}
 
-	return resourceServers, nil
+	return resourceServers, resourceServerScopes, nil
 }
 
-func (store *ResourceServerStore) AllScopes(ctx context.Context, resourceServerId uuid.UUID) ([]model.ResourceServerScope, error) {
-	rows, err := store.db.QueryContext(ctx, "SELECT value, description FROM tbl_resource_server_scope WHERE resource_server_id = ?;", resourceServerId)
+func (store *ResourceServerStore) AllScopes(ctx context.Context, resourceServerId uuid.UUID) ([]model.Scope, error) {
+	rows, err := store.db.QueryContext(ctx, "SELECT id, value, description FROM tbl_scope WHERE resource_server_id = ?;", resourceServerId)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	scopes := make([]model.ResourceServerScope, 0)
+	scopes := make([]model.Scope, 0)
 	for rows.Next() {
-		var scope model.ResourceServerScope
-		if err := rows.Scan(&scope.Value, &scope.Description); err != nil {
+		var scope model.Scope
+		scope.ResourceServerId = resourceServerId
+		if err := rows.Scan(&scope.Id, &scope.Value, &scope.Description); err != nil {
 			return nil, err
 		}
 
@@ -233,12 +231,12 @@ func (store *ResourceServerStore) AllScopes(ctx context.Context, resourceServerI
 	return scopes, nil
 }
 
-func (store *ResourceServerStore) AddScope(ctx context.Context, resourceServerId uuid.UUID, value, description string) error {
-	if _, err := store.db.ExecContext(ctx, "INSERT INTO tbl_resource_server_scope (resource_server_id, value, description) VALUES (?,?,?);",
-		uuid.New(),
-		resourceServerId,
-		value,
-		description,
+func (store *ResourceServerStore) AddScope(ctx context.Context, scope model.Scope) error {
+	if _, err := store.db.ExecContext(ctx, "INSERT INTO tbl_scope (id, resource_server_id, value, description) VALUES (?,?,?,?);",
+		scope.Id,
+		scope.ResourceServerId,
+		scope.Value,
+		scope.Description,
 	); err != nil {
 		return err
 	}
@@ -246,8 +244,8 @@ func (store *ResourceServerStore) AddScope(ctx context.Context, resourceServerId
 	return nil
 }
 
-func (store *ResourceServerStore) DeleteScope(ctx context.Context, resourceServerId uuid.UUID, value string) error {
-	if _, err := store.db.ExecContext(ctx, "DELETE FROM tbl_resource_server_scope WHERE resource_server_id = ? AND value = ?;", resourceServerId, value); err != nil {
+func (store *ResourceServerStore) DeleteScopeById(ctx context.Context, id uuid.UUID) error {
+	if _, err := store.db.ExecContext(ctx, "DELETE FROM tbl_scope WHERE id = ?;", id); err != nil {
 		return err
 	}
 
