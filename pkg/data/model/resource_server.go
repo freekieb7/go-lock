@@ -18,12 +18,11 @@ type ResourceServer struct {
 	SigningAlgorithm         SigningAlgorithm
 	AllowSkippingUserConsent bool
 	AllowOfflineAccess       bool
-	EnabledRbac              bool
 	CreatedAt                int64
 	UpdatedAt                int64
 }
 
-type Scope struct {
+type Permission struct {
 	Id               uuid.UUID
 	ResourceServerId uuid.UUID
 	Value            string

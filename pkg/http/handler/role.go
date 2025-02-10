@@ -15,9 +15,9 @@ import (
 )
 
 type responseBodyRole struct {
-	Id          uuid.UUID
-	Name        string
-	Description string
+	Id          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
 }
 
 func Roles(roleStore *store.RoleStore) http.Handler {
@@ -119,6 +119,8 @@ func Role(roleStore *store.RoleStore) http.Handler {
 						encoding.EncodeError(w, http.StatusNotFound, "Not found", fmt.Sprintf("Invalid role id : %s", roleId))
 						return
 					}
+
+					panic(err)
 				}
 
 				encoding.Encode(w, http.StatusOK, responseBodyRole{
@@ -179,6 +181,21 @@ func Role(roleStore *store.RoleStore) http.Handler {
 				}
 
 				w.WriteHeader(http.StatusOK)
+			}
+		}
+	})
+}
+
+func RolePermissions(roleStore *store.RoleStore) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			{
+
+			}
+		case http.MethodPost:
+			{
+
 			}
 		}
 	})

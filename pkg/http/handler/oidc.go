@@ -47,11 +47,14 @@ func OpenIdConfigurations(
 					// "end_session_endpoint":                        "http://localhost:8080/oauth2/end_session",
 					"jwks_uri":              fmt.Sprintf("%s/auth/oidc/jwks", settings.Host),
 					"registration_endpoint": fmt.Sprintf("%s/auth/oidc/register", settings.Host),
-					// "scopes_supported":                            []string{"openid", "profile", "email", "address", "phone", "offline_access"},
+					"scopes_supported":      []string{"openid", "profile", "email", "offline_access"},
 					"response_types_supported": []string{
 						"code",
 						"token",
-						// "code id_token", "id_token", "id_token token",
+						// "code id_token"
+						// "id_token",
+						"id_token token",
+						// "code id_token"
 					},
 					// "acr_values_supported":                        []string{"urn:mace:incommon:iap:silver", "urn:mace:incommon:iap:bronze"},
 					"subject_types_supported": []string{

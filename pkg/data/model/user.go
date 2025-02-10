@@ -22,10 +22,3 @@ type User struct {
 	CreatedAt     int64
 	UpdatedAt     int64
 }
-
-type UserAssignedScope struct {
-	ScopeValue         string
-	ScopeDescription   string
-	ResourceServerId   uuid.UUID
-	ResourceServerName string
-}

@@ -56,14 +56,12 @@ func (store *RoleStore) Create(ctx context.Context, role model.Role) error {
 func (store *RoleStore) GetById(ctx context.Context, id uuid.UUID) (model.Role, error) {
 	var role model.Role
 
-	row, err := store.db.QueryContext(ctx, "SELECT id, name, description FROM tbl_role WHERE id = ?;", id)
-	if err != nil {
+	row := store.db.QueryRowContext(ctx, "SELECT id, name, description FROM tbl_role WHERE id = ?;", id)
+	if err := row.Scan(&role.Id, &role.Name, &role.Description); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return role, ErrRoleNotFound
 		}
-	}
 
-	if err := row.Scan(&role.Id, &role.Name, &role.Description); err != nil {
 		return role, err
 	}
 

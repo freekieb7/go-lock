@@ -3,7 +3,6 @@ package handler
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"slices"
 	"time"
@@ -16,24 +15,17 @@ import (
 	"github.com/google/uuid"
 )
 
-type httpBodyResourceServerScope struct {
-	Value      string `json:"value"`
-	Desciption string `json:"description"`
-}
-
 type responseBodyResourceServer struct {
-	Id                       uuid.UUID                     `json:"id"`
-	Name                     string                        `json:"name"`
-	Desciption               string                        `json:"description"`
-	Url                      string                        `json:"url"`
-	IsSystem                 bool                          `json:"is_system"`
-	Scopes                   []httpBodyResourceServerScope `json:"scopes"`
-	SigningAlgorithm         string                        `json:"signing_algorithm"`
-	AllowOfflineAccess       bool                          `json:"allow_offline_access"`
-	AllowSkippingUserConsent bool                          `json:"allow_skipping_user_consent"`
-	EnabledRbac              bool                          `json:"enabled_rbac"`
-	UpdatedAt                int64                         `json:"updated_at"`
-	CreatedAt                int64                         `json:"created_at"`
+	Id                       uuid.UUID `json:"id"`
+	Name                     string    `json:"name"`
+	Desciption               string    `json:"description"`
+	Url                      string    `json:"url"`
+	IsSystem                 bool      `json:"is_system"`
+	SigningAlgorithm         string    `json:"signing_algorithm"`
+	AllowOfflineAccess       bool      `json:"allow_offline_access"`
+	AllowSkippingUserConsent bool      `json:"allow_skipping_user_consent"`
+	UpdatedAt                int64     `json:"updated_at"`
+	CreatedAt                int64     `json:"created_at"`
 }
 
 func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handler {
@@ -42,15 +34,13 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 	}
 
 	type postRequestBody struct {
-		Id                       uuid.UUID                     `json:"id"`
-		Name                     string                        `json:"name"`
-		Desciption               string                        `json:"description"`
-		Url                      string                        `json:"url"`
-		Scopes                   []httpBodyResourceServerScope `json:"scopes"`
-		SigningAlgorithm         string                        `json:"signing_algorithm"`
-		AllowOfflineAccess       bool                          `json:"allow_offline_access"`
-		AllowSkippingUserConsent bool                          `json:"allow_skipping_user_consent"`
-		EnabledRbac              bool                          `json:"enabled_rbac"`
+		Id                       uuid.UUID `json:"id"`
+		Name                     string    `json:"name"`
+		Desciption               string    `json:"description"`
+		Url                      string    `json:"url"`
+		SigningAlgorithm         string    `json:"signing_algorithm"`
+		AllowOfflineAccess       bool      `json:"allow_offline_access"`
+		AllowSkippingUserConsent bool      `json:"allow_skipping_user_consent"`
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,35 +53,23 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 					return
 				}
 
-				resourceServers, resourceServersScopes, err := resourceServerStore.AllWithScopes(r.Context())
+				resourceServers, err := resourceServerStore.All(r.Context())
 				if err != nil {
 					panic(err)
 				}
 
 				var responseBody getResponseBody
 				responseBody.ResourceServers = make([]responseBodyResourceServer, 0, len(resourceServers))
-				for idx, resourceServer := range resourceServers {
-					scopes := resourceServersScopes[idx]
-
-					responseScopes := make([]httpBodyResourceServerScope, 0, len(scopes))
-					for _, scope := range scopes {
-						responseScopes = append(responseScopes, httpBodyResourceServerScope{
-							Value:      scope.Value,
-							Desciption: scope.Description,
-						})
-					}
-
+				for _, resourceServer := range resourceServers {
 					responseBody.ResourceServers = append(responseBody.ResourceServers, responseBodyResourceServer{
 						Id:                       resourceServer.Id,
 						Url:                      resourceServer.Url,
 						Name:                     resourceServer.Name,
 						Desciption:               resourceServer.Description,
 						IsSystem:                 resourceServer.IsSystem,
-						Scopes:                   responseScopes,
 						SigningAlgorithm:         string(resourceServer.SigningAlgorithm),
 						AllowSkippingUserConsent: resourceServer.AllowSkippingUserConsent,
 						AllowOfflineAccess:       resourceServer.AllowOfflineAccess,
-						EnabledRbac:              resourceServer.EnabledRbac,
 						CreatedAt:                resourceServer.CreatedAt,
 						UpdatedAt:                resourceServer.UpdatedAt,
 					})
@@ -112,14 +90,6 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 					panic(err)
 				}
 
-				scopes := make([]model.Scope, 0, len(requestBody.Scopes))
-				for _, scope := range requestBody.Scopes {
-					scopes = append(scopes, model.Scope{
-						Value:       scope.Value,
-						Description: scope.Desciption,
-					})
-				}
-
 				now := time.Now().Unix()
 				resourceServer := model.ResourceServer{
 					Id:                       requestBody.Id,
@@ -133,17 +103,6 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 					CreatedAt:                now,
 					UpdatedAt:                now,
 				}
-				if err := resourceServerStore.Create(r.Context(), resourceServer, scopes); err != nil {
-					panic(err)
-				}
-
-				responseScopes := make([]httpBodyResourceServerScope, 0, len(scopes))
-				for _, scope := range scopes {
-					responseScopes = append(responseScopes, httpBodyResourceServerScope{
-						Value:      scope.Value,
-						Desciption: scope.Description,
-					})
-				}
 
 				encoding.Encode(w, http.StatusOK, responseBodyResourceServer{
 					Id:                       resourceServer.Id,
@@ -151,7 +110,6 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 					Name:                     resourceServer.Name,
 					Desciption:               resourceServer.Description,
 					IsSystem:                 resourceServer.IsSystem,
-					Scopes:                   responseScopes,
 					SigningAlgorithm:         string(resourceServer.SigningAlgorithm),
 					AllowSkippingUserConsent: resourceServer.AllowSkippingUserConsent,
 					AllowOfflineAccess:       resourceServer.AllowOfflineAccess,
@@ -168,18 +126,12 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 }
 
 func ResourceServer(resourceServerStore *store.ResourceServerStore) http.Handler {
-	type patchRequestBodyScope struct {
-		Value      string `json:"value"`
-		Desciption string `json:"description"`
-	}
-
 	type patchRequestBody struct {
-		Url                      string                  `json:"url"`
-		Name                     string                  `json:"name"`
-		Description              string                  `json:"description"`
-		Scopes                   []patchRequestBodyScope `json:"scopes"`
-		AllowSkippingUserConsent *bool                   `json:"allow_skipping_user_consent"`
-		AllowOfflineAccess       *bool                   `json:"allow_offline_access"`
+		Url                      string `json:"url"`
+		Name                     string `json:"name"`
+		Description              string `json:"description"`
+		AllowSkippingUserConsent *bool  `json:"allow_skipping_user_consent"`
+		AllowOfflineAccess       *bool  `json:"allow_offline_access"`
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -207,26 +159,12 @@ func ResourceServer(resourceServerStore *store.ResourceServerStore) http.Handler
 					panic(err)
 				}
 
-				scopes, err := resourceServerStore.AllScopes(r.Context(), resourceServerId)
-				if err != nil {
-					panic(err)
-				}
-
-				responseScopes := make([]httpBodyResourceServerScope, 0, len(scopes))
-				for _, scope := range scopes {
-					responseScopes = append(responseScopes, httpBodyResourceServerScope{
-						Value:      scope.Value,
-						Desciption: scope.Description,
-					})
-				}
-
 				encoding.Encode(w, http.StatusOK, responseBodyResourceServer{
 					Id:                       resourceServer.Id,
 					Url:                      resourceServer.Url,
 					Name:                     resourceServer.Name,
 					Desciption:               resourceServer.Description,
 					IsSystem:                 resourceServer.IsSystem,
-					Scopes:                   responseScopes,
 					SigningAlgorithm:         string(resourceServer.SigningAlgorithm),
 					AllowSkippingUserConsent: resourceServer.AllowSkippingUserConsent,
 					AllowOfflineAccess:       resourceServer.AllowOfflineAccess,
@@ -274,33 +212,10 @@ func ResourceServer(resourceServerStore *store.ResourceServerStore) http.Handler
 					resourceServer.AllowOfflineAccess = *requestBody.AllowOfflineAccess
 				}
 
-				scopes := make([]model.Scope, 0)
-				if requestBody.Scopes != nil {
-					log.Println("scopes is not nil")
-					scopes := make([]model.Scope, 0, len(requestBody.Scopes))
-
-					for _, scope := range requestBody.Scopes {
-						scopes = append(scopes, model.Scope{
-							Id:               uuid.New(),
-							ResourceServerId: resourceServer.Id,
-							Value:            scope.Value,
-							Description:      scope.Desciption,
-						})
-					}
-				}
-
 				resourceServer.UpdatedAt = time.Now().Unix()
 
-				if err := resourceServerStore.Update(r.Context(), resourceServer, scopes); err != nil {
+				if err := resourceServerStore.Update(r.Context(), resourceServer); err != nil {
 					panic(err)
-				}
-
-				responseScopes := make([]httpBodyResourceServerScope, 0, len(scopes))
-				for _, scope := range scopes {
-					responseScopes = append(responseScopes, httpBodyResourceServerScope{
-						Value:      scope.Value,
-						Desciption: scope.Description,
-					})
 				}
 
 				encoding.Encode(w, http.StatusOK, responseBodyResourceServer{
@@ -309,7 +224,6 @@ func ResourceServer(resourceServerStore *store.ResourceServerStore) http.Handler
 					Name:                     resourceServer.Name,
 					Desciption:               resourceServer.Description,
 					IsSystem:                 resourceServer.IsSystem,
-					Scopes:                   responseScopes,
 					SigningAlgorithm:         string(resourceServer.SigningAlgorithm),
 					AllowSkippingUserConsent: resourceServer.AllowSkippingUserConsent,
 					AllowOfflineAccess:       resourceServer.AllowOfflineAccess,
@@ -326,6 +240,207 @@ func ResourceServer(resourceServerStore *store.ResourceServerStore) http.Handler
 				}
 
 				if err := resourceServerStore.DeleteById(r.Context(), resourceServerId); err != nil {
+					panic(err)
+				}
+
+				w.WriteHeader(http.StatusOK)
+			}
+		default:
+			{
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
+		}
+	})
+}
+
+func ResourceServerPermissions(resourceServerStore *store.ResourceServerStore) http.Handler {
+	type getReponseBodyPermissions struct {
+		Id          uuid.UUID `json:"id"`
+		Value       string    `json:"value"`
+		Description string    `json:"description"`
+	}
+
+	type getResponseBody struct {
+		Permissions []getReponseBodyPermissions `json:"permissions"`
+	}
+
+	type postRequestBody struct {
+		Id          uuid.UUID `json:"id"`
+		Value       string    `json:"value"`
+		Description string    `json:"description"`
+	}
+
+	type postResponseBody struct {
+		Id          uuid.UUID `json:"id"`
+		Value       string    `json:"value"`
+		Description string    `json:"description"`
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resourceServerId, err := uuid.Parse(r.PathValue("resource_server_id"))
+		if err != nil {
+			panic(err)
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			{
+				// Permission check
+				if !slices.Contains(session.FromRequest(r).Token().Scope, scope.ReadResourceServers) {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+
+				permissions, err := resourceServerStore.AllPermissions(r.Context(), resourceServerId)
+				if err != nil {
+					panic(err)
+				}
+
+				var responseBody getResponseBody
+				responseBody.Permissions = make([]getReponseBodyPermissions, 0, len(permissions))
+				for _, permission := range permissions {
+					responseBody.Permissions = append(responseBody.Permissions, getReponseBodyPermissions{
+						Id:          permission.Id,
+						Value:       permission.Value,
+						Description: permission.Description,
+					})
+				}
+
+				encoding.Encode(w, http.StatusOK, responseBody)
+			}
+		case http.MethodPost:
+			{
+				// Permission check
+				if !slices.Contains(session.FromRequest(r).Token().Scope, scope.UpdateResourceServers) {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+
+				requestBody, err := encoding.Decode[postRequestBody](r.Body)
+				if err != nil {
+					panic(err)
+				}
+
+				permission := model.Permission{
+					Id:               requestBody.Id,
+					ResourceServerId: resourceServerId,
+					Value:            requestBody.Value,
+					Description:      requestBody.Description,
+				}
+
+				if err := resourceServerStore.CreatePermission(r.Context(), permission); err != nil {
+					panic(err)
+				}
+
+				encoding.Encode(w, http.StatusCreated, postResponseBody{
+					Id:          permission.Id,
+					Value:       permission.Value,
+					Description: permission.Description,
+				})
+			}
+		}
+	})
+}
+
+func ResourceServerPermission(resourceServerStore *store.ResourceServerStore) http.Handler {
+	type patchRequestBody struct {
+		Value       string `json:"value"`
+		Description string `json:"description"`
+	}
+
+	type responseBody struct {
+		Id               uuid.UUID `json:"id"`
+		ResourceServerId uuid.UUID `json:"resource_server_id"`
+		Value            string    `json:"value"`
+		Description      string    `json:"description"`
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resourceServerId, err := uuid.Parse(r.PathValue("resource_server_id"))
+		if err != nil {
+			panic(err)
+		}
+
+		permissionId, err := uuid.Parse(r.PathValue("permission_id"))
+		if err != nil {
+			panic(err)
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			{
+				// Permission check
+				if !slices.Contains(session.FromRequest(r).Token().Scope, scope.UpdateResourceServers) {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+
+				permission, err := resourceServerStore.GetPermissionById(r.Context(), permissionId)
+				if err != nil {
+					panic(err)
+				}
+
+				if permission.ResourceServerId != resourceServerId {
+					encoding.EncodeError(w, http.StatusNotFound, "Not Found", fmt.Sprintf("Invalid permission : %s", permissionId))
+				}
+
+				encoding.Encode(w, http.StatusOK, responseBody{
+					Id:               permission.Id,
+					ResourceServerId: permission.ResourceServerId,
+					Value:            permission.Value,
+					Description:      permission.Description,
+				})
+
+			}
+		case http.MethodPatch:
+			{
+				// Permission check
+				if !slices.Contains(session.FromRequest(r).Token().Scope, scope.UpdateResourceServers) {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+
+				requestBody, err := encoding.Decode[patchRequestBody](r.Body)
+				if err != nil {
+					panic(err)
+				}
+
+				permission, err := resourceServerStore.GetPermissionById(r.Context(), permissionId)
+				if err != nil {
+					panic(err)
+				}
+
+				if permission.ResourceServerId != resourceServerId {
+					encoding.EncodeError(w, http.StatusNotFound, "Not Found", fmt.Sprintf("Invalid permission : %s", permissionId))
+				}
+
+				if requestBody.Value != "" {
+					permission.Value = requestBody.Value
+				}
+
+				if requestBody.Description != "" {
+					permission.Description = requestBody.Description
+				}
+
+				if err := resourceServerStore.UpdatePermission(r.Context(), permission); err != nil {
+					panic(err)
+				}
+
+				encoding.Encode(w, http.StatusOK, responseBody{
+					Id:               permission.Id,
+					ResourceServerId: permission.ResourceServerId,
+					Value:            permission.Value,
+					Description:      permission.Description,
+				})
+			}
+		case http.MethodDelete:
+			{
+				// Permission check
+				if !slices.Contains(session.FromRequest(r).Token().Scope, scope.UpdateResourceServers) {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+
+				if err := resourceServerStore.DeletePermissionById(r.Context(), resourceServerId, permissionId); err != nil {
 					panic(err)
 				}
 

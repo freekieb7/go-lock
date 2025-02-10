@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"slices"
@@ -297,25 +298,25 @@ func User(userStore *store.UserStore) http.Handler {
 	})
 }
 
-func UserScopes(userStore *store.UserStore) http.Handler {
-	type getResponseBodyScopeDetails struct {
-		ResourceServerId   uuid.UUID `json:"resource_server_id"`
-		ResourceServerName string    `json:"resource_server_name"`
-		ScopeValue         string    `json:"scope_value"`
-		ScopeDetails       string    `json:"scope_details"`
+func UserPermissions(userStore *store.UserStore) http.Handler {
+	type getResponseBodyPermissionDetails struct {
+		Id               uuid.UUID `json:"id"`
+		ResourceServerId uuid.UUID `json:"resource_server_id"`
+		Value            string    `json:"value"`
+		Description      string    `json:"description"`
 	}
 
 	type getResponseBody struct {
-		Scopes []getResponseBodyScopeDetails `json:"scopes"`
+		Permissions []getResponseBodyPermissionDetails `json:"permissions"`
 	}
 
 	type postRequestBodyPermission struct {
 		ResourceServerId uuid.UUID `json:"resource_server_id"`
-		ScopeId          string    `json:"scope_id"`
+		PermissionId     uuid.UUID `json:"permission_id"`
 	}
 
 	type postRequestBody struct {
-		Scopes []postRequestBodyPermission `json:"scopes"`
+		Permissions []postRequestBodyPermission `json:"permissions"`
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -334,19 +335,29 @@ func UserScopes(userStore *store.UserStore) http.Handler {
 					return
 				}
 
-				scopes, err := userStore.AllAssignedScopes(r.Context(), userId)
+				_, err := userStore.GetById(r.Context(), userId)
+				if err != nil {
+					if errors.Is(err, store.ErrUserNotFound) {
+						encoding.EncodeError(w, http.StatusNotFound, "Not found", fmt.Sprintf("Invalid User ID : %s", userId))
+						return
+					}
+
+					panic(err)
+				}
+
+				permissions, err := userStore.AllPermissions(r.Context(), userId)
 				if err != nil {
 					panic(err)
 				}
 
 				var responseBody getResponseBody
-				responseBody.Scopes = make([]getResponseBodyScopeDetails, 0, len(scopes))
-				for _, scope := range scopes {
-					responseBody.Scopes = append(responseBody.Scopes, getResponseBodyScopeDetails{
-						ResourceServerId:   scope.ResourceServerId,
-						ResourceServerName: scope.ResourceServerName,
-						ScopeValue:         scope.ScopeValue,
-						ScopeDetails:       scope.ScopeDescription,
+				responseBody.Permissions = make([]getResponseBodyPermissionDetails, 0, len(permissions))
+				for _, permission := range permissions {
+					responseBody.Permissions = append(responseBody.Permissions, getResponseBodyPermissionDetails{
+						Id:               permission.Id,
+						ResourceServerId: permission.ResourceServerId,
+						Value:            permission.Value,
+						Description:      permission.Description,
 					})
 				}
 
@@ -366,8 +377,8 @@ func UserScopes(userStore *store.UserStore) http.Handler {
 					panic(err)
 				}
 
-				for _, scope := range requestBody.Scopes {
-					userStore.AddScope(r.Context(), userId, scope.ResourceServerId, scope.ScopeId)
+				for _, permission := range requestBody.Permissions {
+					userStore.AssignPermission(r.Context(), userId, permission.PermissionId)
 				}
 
 				w.WriteHeader(http.StatusCreated)
@@ -386,8 +397,8 @@ func UserScopes(userStore *store.UserStore) http.Handler {
 					panic(err)
 				}
 
-				for _, scope := range requestBody.Scopes {
-					userStore.RemoveScope(r.Context(), userId, scope.ResourceServerId, scope.ScopeId)
+				for _, permission := range requestBody.Permissions {
+					userStore.RevokePermission(r.Context(), userId, permission.PermissionId)
 				}
 
 				w.WriteHeader(http.StatusNoContent)

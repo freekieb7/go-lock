@@ -142,34 +142,39 @@ func (store *UserStore) DeleteById(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (store *UserStore) AllAssignedScopes(ctx context.Context, userId uuid.UUID) ([]model.UserAssignedScope, error) {
-	userAssignedScopes := make([]model.UserAssignedScope, 0)
+func (store *UserStore) AllPermissions(ctx context.Context, userId uuid.UUID) ([]model.Permission, error) {
+	permissions := make([]model.Permission, 0)
 
 	rows, err := store.db.QueryContext(ctx, `
-		SELECT resource_server_scope.value AS scope_value, resource_server_scope.description AS scope_description, resource_server.id AS resource_server_id, resource_server.name AS resource_server_name
-		FROM tbl_scope_per_user scope_per_user
-		LEFT JOIN tbl_resource_server_scope resource_server_scope ON scope_per_user.resource_server_scope_value = resource_server_scope.value AND scope_per_user.resource_server_id = resource_server_scope.resource_server_id 
-		LEFT JOIN tbl_resource_server resource_server ON resource_server_scope.resource_server_id = resource_server.id
-		WHERE scope_per_user.user_id = ?
-	`, userId)
+		SELECT permission.id, permission.resource_server_id, permission.value, permission.description
+		FROM tbl_role_per_user role_per_user
+		LEFT JOIN tbl_permission_per_role permission_per_role ON role_per_user.role_id = permission_per_role.role_id
+		LEFT JOIN tbl_permission permission ON permission.id = permission_per_role.permission_id
+		WHERE role_per_user.user_id = ?
+		UNION
+		SELECT permission.id, permission.resource_server_id, permission.value, permission.description
+		FROM tbl_permission_per_user permission_per_user
+		LEFT JOIN tbl_permission permission ON permission.id = permission_per_user.permission_id
+		WHERE permission_per_user.user_id = ?
+	`, userId, userId)
 	if err != nil {
-		return nil, err
+		return permissions, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var userAssignedScope model.UserAssignedScope
-		if err := rows.Scan(&userAssignedScope.ScopeValue, &userAssignedScope.ScopeDescription, &userAssignedScope.ResourceServerId, &userAssignedScope.ResourceServerName); err != nil {
-			return nil, err
+		var permission model.Permission
+		if err := rows.Scan(&permission.Id, &permission.ResourceServerId, &permission.Value, &permission.Description); err != nil {
+			return permissions, err
 		}
 
-		userAssignedScopes = append(userAssignedScopes, userAssignedScope)
+		permissions = append(permissions, permission)
 	}
-	return userAssignedScopes, nil
+	return permissions, nil
 }
 
-func (store *UserStore) AddScope(ctx context.Context, userId uuid.UUID, resourceServerId uuid.UUID, scopeId string) error {
-	_, err := store.db.ExecContext(ctx, `INSERT INTO tbl_scope_per_user (user_id, scope_id, resource_server_id) VALUES (?,?,?);`, userId, scopeId, resourceServerId)
+func (store *UserStore) AssignPermission(ctx context.Context, userId uuid.UUID, permissionId uuid.UUID) error {
+	_, err := store.db.ExecContext(ctx, `INSERT INTO tbl_permission_per_user (user_id, permission_id) VALUES (?,?);`, userId, permissionId)
 	if err != nil {
 		return err
 	}
@@ -177,8 +182,8 @@ func (store *UserStore) AddScope(ctx context.Context, userId uuid.UUID, resource
 	return nil
 }
 
-func (store *UserStore) RemoveScope(ctx context.Context, userId uuid.UUID, resourceServerId uuid.UUID, scopeId string) error {
-	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_scope_per_user WHERE user_id = ? AND scope_id = ? AND resource_server_id = ?;`, userId, scopeId, resourceServerId)
+func (store *UserStore) RevokePermission(ctx context.Context, userId uuid.UUID, permissionId uuid.UUID) error {
+	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_permission_per_user WHERE user_id = ? AND permission_id = ?;`, userId, permissionId)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,14 @@
 package scope
 
 const (
+	OfflineAccess = "offline_access"
+
+	// https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims
+	OpenId  string = "openid"
+	Profile string = "profile"
+	Email   string = "email"
+	// Phone   string = "phone"
+
 	CreateUsers string = "create:users"
 	ReadUsers   string = "read:users"
 	UpdateUsers string = "update:users"

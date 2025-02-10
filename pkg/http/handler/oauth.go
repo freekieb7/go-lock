@@ -20,6 +20,7 @@ import (
 	"github.com/freekieb7/go-lock/pkg/jwt"
 	"github.com/freekieb7/go-lock/pkg/jwt/helper"
 	"github.com/freekieb7/go-lock/pkg/random"
+	"github.com/freekieb7/go-lock/pkg/scope"
 	"github.com/freekieb7/go-lock/pkg/session"
 	"github.com/freekieb7/go-lock/pkg/settings"
 	"github.com/google/uuid"
@@ -61,10 +62,14 @@ const (
 )
 
 type AuthRequest struct {
-	Scopes     []string
 	UrlValues  string
 	UserId     uuid.UUID
 	Authorized bool
+}
+
+func (r AuthRequest) Scopes() []string {
+	a, _ := url.ParseQuery(r.UrlValues)
+	return strings.Split(a.Get("scope"), " ")
 }
 
 func init() {
@@ -219,42 +224,6 @@ func OAuthAuthorize(
 				return
 			}
 
-			resourceServerScopes, err := resourceServerStore.AllScopes(r.Context(), resourceServer.Id)
-			if err != nil {
-				panic(err)
-			}
-
-			requestedScopes := strings.Split(scopeRaw, " ")
-			availableScopes := []string{"openid", "profile", "email"}
-			if resourceServer.AllowOfflineAccess {
-				availableScopes = append(availableScopes, "offline_access")
-			}
-			for _, scope := range resourceServerScopes {
-				availableScopes = append(availableScopes, scope.Value)
-			}
-
-			for _, requestedScope := range requestedScopes {
-				if slices.Contains(availableScopes, requestedScope) {
-					continue
-				}
-
-				found := false
-				for _, resourceServerScope := range resourceServerScopes {
-					if requestedScope == resourceServerScope.Value {
-						found = true
-						break
-					}
-				}
-
-				if !found {
-					encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
-						ErrOAuthInvalidRequest,
-						fmt.Sprintf("Invalid scope : %s", requestedScope),
-					})
-					return
-				}
-			}
-
 			// response_type "token" is also viable
 			// https://auth0.com/docs/get-started/authentication-and-authorization-flow/authorization-code-flow/call-your-api-using-the-authorization-code-flow
 			switch responseTypeRaw {
@@ -293,7 +262,6 @@ func OAuthAuthorize(
 
 					if !session.Has("auth_request") {
 						var authRequest AuthRequest
-						authRequest.Scopes = requestedScopes
 						authRequest.UrlValues = r.URL.Query().Encode()
 
 						if session.Has("user_id") {
@@ -378,11 +346,29 @@ func OAuthToken(
 		ExpiresIn    uint32 `json:"expires_in"`
 		RefreshToken string `json:"refresh_token,omitempty"`
 		IdToken      string `json:"id_token,omitempty"`
+		Scopes       string `json:"scopes,omitempty"`
 	}
 
 	generateUserTokensResponseBody := func(ctx context.Context, scopes []string, user model.User, client model.Client, resourceServer model.ResourceServer) (tokenResponseBody, error) {
 		var responseBody tokenResponseBody
 		responseBody.TokenType = "Bearer"
+		responseBody.Scopes = strings.Join(scopes, " ")
+
+		permissions, err := userStore.AllPermissions(ctx, user.Id)
+		if err != nil {
+			panic(err)
+		}
+
+		accessTokenScopes := make([]string, 0)
+
+		for _, requestedScope := range scopes {
+			if slices.ContainsFunc(permissions, func(permission model.Permission) bool {
+				return permission.Value == requestedScope
+			}) {
+				accessTokenScopes = append(accessTokenScopes, requestedScope)
+				break
+			}
+		}
 
 		jwks, err := jwksStore.FirstActive(ctx)
 		if err != nil {
@@ -394,13 +380,25 @@ func OAuthToken(
 		now := time.Now()
 		var expiresInSeconds uint32 = 3600
 
-		accessToken := jwtBuilder.
+		jwtBuilder.
 			SetIssuer(settings.Host).
 			SetAudience(resourceServer.Url).
 			SetInitiatedAt(now.Unix()).
 			SetNotBefore(now.Unix()).
-			SetExpiresAt(now.Add(time.Second * time.Duration(expiresInSeconds)).Unix()).
-			Build()
+			SetExpiresAt(now.Add(time.Second * time.Duration(expiresInSeconds)).Unix())
+
+		if len(accessTokenScopes) > 0 {
+			jwtBuilder.SetScope(strings.Join(accessTokenScopes, " "))
+		}
+
+		if slices.Contains(scopes, scope.OpenId) {
+			jwtBuilder.SetCustomClaim("aud", []string{
+				resourceServer.Url,
+				resourceServer.Url + "auth/userinfo",
+			})
+		}
+
+		accessToken := jwtBuilder.Build()
 
 		signedAccessToken, err := jwt.Sign(accessToken, jwks)
 		if err != nil {
@@ -409,7 +407,7 @@ func OAuthToken(
 		responseBody.AccessToken = signedAccessToken
 		responseBody.ExpiresIn = expiresInSeconds
 
-		if slices.Contains(scopes, "offline_access") {
+		if slices.Contains(scopes, scope.OfflineAccess) {
 			refreshToken := model.RefreshToken{
 				Id:               uuid.New(),
 				ClientId:         client.Id,
@@ -426,16 +424,38 @@ func OAuthToken(
 			responseBody.RefreshToken = refreshToken.Id.String()
 		}
 
-		if slices.Contains(scopes, "openid") {
-			idToken := jwtBuilder.
+		if slices.Contains(scopes, scope.OpenId) {
+			jwtBuilder.
 				Reset().
 				SetIssuer(settings.Host).
 				SetAudience(client.Id.String()).
 				SetSubject(user.Id.String()).
 				SetInitiatedAt(now.Unix()).
-				SetExpiresAt(now.Add(time.Second * time.Duration(expiresInSeconds)).Unix()).
-				Build()
+				SetExpiresAt(now.Add(time.Second * time.Duration(expiresInSeconds)).Unix())
 
+			if slices.Contains(scopes, scope.Profile) {
+				jwtBuilder.SetCustomClaim("name", user.Name)
+				// jwtBuilder.SetCustomClaim("family_name", user.Email)
+				// jwtBuilder.SetCustomClaim("given_name", user.Email)
+				// jwtBuilder.SetCustomClaim("middle_name", "")
+				// jwtBuilder.SetCustomClaim("nickname", user.Name)
+				jwtBuilder.SetCustomClaim("preferred_username", user.Username)
+				// jwtBuilder.SetCustomClaim("profile", "")
+				jwtBuilder.SetCustomClaim("picture", user.Picture)
+				// jwtBuilder.SetCustomClaim("website", "")
+				// jwtBuilder.SetCustomClaim("gender", "")
+				// jwtBuilder.SetCustomClaim("birthdate", "")
+				// jwtBuilder.SetCustomClaim("zoneinfo", "")
+				// jwtBuilder.SetCustomClaim("locale", "")
+				jwtBuilder.SetCustomClaim("updated_at", user.UpdatedAt)
+			}
+
+			if slices.Contains(scopes, scope.Email) {
+				jwtBuilder.SetCustomClaim("email", user.Email)
+				jwtBuilder.SetCustomClaim("email_verified", user.EmailVerified)
+			}
+
+			idToken := jwtBuilder.Build()
 			signedIdToken, err := jwt.Sign(idToken, jwks)
 			if err != nil {
 				return responseBody, err
@@ -766,32 +786,6 @@ func OAuthToken(
 						}
 
 						requestedScopes := strings.Split(authorizationCode.Scope, " ")
-						allowedScopes, err := userStore.AllAssignedScopes(r.Context(), user.Id)
-						if err != nil {
-							panic(err)
-						}
-
-						for _, requestedScope := range requestedScopes {
-							if slices.Contains([]string{"offline_access", "openid", "profile", "email"}, requestedScope) {
-								continue
-							}
-
-							found := false
-							for _, userAssignedScope := range allowedScopes {
-								if requestedScope == userAssignedScope.ScopeValue {
-									found = true
-									break
-								}
-							}
-
-							if !found {
-								encoding.Encode(w, http.StatusBadRequest, OAuthErrorResponse{
-									ErrOAuthInvalidRequest,
-									fmt.Sprintf("Invalid scope : %s", requestedScope),
-								})
-								return
-							}
-						}
 
 						generatedReponseBody, err := generateUserTokensResponseBody(r.Context(), requestedScopes, user, client, resourceServer)
 						if err != nil {

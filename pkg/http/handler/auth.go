@@ -165,7 +165,7 @@ func AuthorizePage() http.Handler {
 				}
 
 				tmpl.Execute(w, map[string]any{
-					"Scope": authRequest.Scopes,
+					"Scope": authRequest.Scopes(),
 				})
 				return
 			}

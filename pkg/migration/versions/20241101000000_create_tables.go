@@ -79,7 +79,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 		Blocked:       false,
 	}
 
-	scopes := []model.Scope{
+	permissions := []model.Permission{
 		{
 			Id:               uuid.New(),
 			ResourceServerId: resourceServer.Id,
@@ -254,7 +254,7 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			);`,
 		},
 		{
-			Query: `CREATE TABLE tbl_scope (
+			Query: `CREATE TABLE tbl_permission (
 				id TEXT NOT NULL,
 				resource_server_id TEXT NOT NULL,
 				value TEXT NOT NULL,
@@ -265,12 +265,12 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			);`,
 		},
 		{
-			Query: `CREATE TABLE tbl_scope_per_user (
+			Query: `CREATE TABLE tbl_permission_per_user (
 				user_id TEXT NOT NULL,
-				scope_id TEXT NOT NULL,
-				PRIMARY KEY (user_id, scope_id),
+				permission_id TEXT NOT NULL,
+				PRIMARY KEY (user_id, permission_id),
 				FOREIGN KEY (user_id) REFERENCES tbl_user (id) ON UPDATE CASCADE ON DELETE CASCADE,
-				FOREIGN KEY (scope_id) REFERENCES tbl_scope (id) ON UPDATE CASCADE ON DELETE CASCADE
+				FOREIGN KEY (permission_id) REFERENCES tbl_permission (id) ON UPDATE CASCADE ON DELETE CASCADE
 			);`,
 		},
 		{
@@ -283,12 +283,12 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			);`,
 		},
 		{
-			Query: `CREATE TABLE tbl_scope_per_role (
+			Query: `CREATE TABLE tbl_permission_per_role (
 				role_id TEXT NOT NULL,
-				scope_id TEXT NOT NULL,
-				PRIMARY KEY (role_id, scope_id),
+				permission_id TEXT NOT NULL,
+				PRIMARY KEY (role_id, permission_id),
 				FOREIGN KEY (role_id) REFERENCES tbl_role (id) ON UPDATE CASCADE ON DELETE CASCADE,
-				FOREIGN KEY (scope_id) REFERENCES tbl_scope (id) ON UPDATE CASCADE ON DELETE CASCADE
+				FOREIGN KEY (permission_id) REFERENCES tbl_permission (id) ON UPDATE CASCADE ON DELETE CASCADE
 			);`,
 		},
 		{
@@ -317,37 +317,37 @@ func (m *migration20241101000000) Up() []migration.Statement {
 			Arguments: []any{user.Id, user.Name, user.Username, user.Email, user.PasswordHash, user.Type, user.Picture, user.EmailVerified, user.Blocked, user.CreatedAt, user.UpdatedAt},
 		},
 		{
-			Query: `INSERT INTO tbl_scope (id, resource_server_id, value, description) VALUES (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?);`,
+			Query: `INSERT INTO tbl_permission (id, resource_server_id, value, description) VALUES (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?), (?,?,?,?);`,
 			Arguments: []any{
-				scopes[0].Id, scopes[0].ResourceServerId, scopes[0].Value, scopes[0].Description,
-				scopes[1].Id, scopes[1].ResourceServerId, scopes[1].Value, scopes[1].Description,
-				scopes[2].Id, scopes[2].ResourceServerId, scopes[2].Value, scopes[2].Description,
-				scopes[3].Id, scopes[3].ResourceServerId, scopes[3].Value, scopes[3].Description,
-				scopes[4].Id, scopes[4].ResourceServerId, scopes[4].Value, scopes[4].Description,
-				scopes[5].Id, scopes[5].ResourceServerId, scopes[5].Value, scopes[5].Description,
-				scopes[6].Id, scopes[6].ResourceServerId, scopes[6].Value, scopes[6].Description,
-				scopes[7].Id, scopes[7].ResourceServerId, scopes[7].Value, scopes[7].Description,
-				scopes[8].Id, scopes[8].ResourceServerId, scopes[8].Value, scopes[8].Description,
-				scopes[9].Id, scopes[9].ResourceServerId, scopes[9].Value, scopes[9].Description,
-				scopes[10].Id, scopes[10].ResourceServerId, scopes[10].Value, scopes[10].Description,
-				scopes[11].Id, scopes[11].ResourceServerId, scopes[11].Value, scopes[11].Description,
+				permissions[0].Id, permissions[0].ResourceServerId, permissions[0].Value, permissions[0].Description,
+				permissions[1].Id, permissions[1].ResourceServerId, permissions[1].Value, permissions[1].Description,
+				permissions[2].Id, permissions[2].ResourceServerId, permissions[2].Value, permissions[2].Description,
+				permissions[3].Id, permissions[3].ResourceServerId, permissions[3].Value, permissions[3].Description,
+				permissions[4].Id, permissions[4].ResourceServerId, permissions[4].Value, permissions[4].Description,
+				permissions[5].Id, permissions[5].ResourceServerId, permissions[5].Value, permissions[5].Description,
+				permissions[6].Id, permissions[6].ResourceServerId, permissions[6].Value, permissions[6].Description,
+				permissions[7].Id, permissions[7].ResourceServerId, permissions[7].Value, permissions[7].Description,
+				permissions[8].Id, permissions[8].ResourceServerId, permissions[8].Value, permissions[8].Description,
+				permissions[9].Id, permissions[9].ResourceServerId, permissions[9].Value, permissions[9].Description,
+				permissions[10].Id, permissions[10].ResourceServerId, permissions[10].Value, permissions[10].Description,
+				permissions[11].Id, permissions[11].ResourceServerId, permissions[11].Value, permissions[11].Description,
 			},
 		},
 		{
-			Query: `INSERT INTO tbl_scope_per_user (user_id, scope_id) VALUES (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?);`,
+			Query: `INSERT INTO tbl_permission_per_user (user_id, permission_id) VALUES (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?), (?,?);`,
 			Arguments: []any{
-				user.Id, scopes[0].Id,
-				user.Id, scopes[1].Id,
-				user.Id, scopes[2].Id,
-				user.Id, scopes[3].Id,
-				user.Id, scopes[4].Id,
-				user.Id, scopes[5].Id,
-				user.Id, scopes[6].Id,
-				user.Id, scopes[7].Id,
-				user.Id, scopes[8].Id,
-				user.Id, scopes[9].Id,
-				user.Id, scopes[10].Id,
-				user.Id, scopes[11].Id,
+				user.Id, permissions[0].Id,
+				user.Id, permissions[1].Id,
+				user.Id, permissions[2].Id,
+				user.Id, permissions[3].Id,
+				user.Id, permissions[4].Id,
+				user.Id, permissions[5].Id,
+				user.Id, permissions[6].Id,
+				user.Id, permissions[7].Id,
+				user.Id, permissions[8].Id,
+				user.Id, permissions[9].Id,
+				user.Id, permissions[10].Id,
+				user.Id, permissions[11].Id,
 			},
 		},
 	}
@@ -365,10 +365,10 @@ func (*migration20241101000000) Down() []migration.Statement {
 			Query: `DROP TABLE tbl_role`,
 		},
 		{
-			Query: `DROP TABLE tbl_scope_per_user;`,
+			Query: `DROP TABLE tbl_permission_per_user;`,
 		},
 		{
-			Query: `DROP TABLE tbl_scope;`,
+			Query: `DROP TABLE tbl_permission;`,
 		},
 		{
 			Query: `DROP TABLE tbl_refresh_token;`,

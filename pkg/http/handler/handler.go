@@ -31,16 +31,19 @@ func New(
 
 	mux.Handle("/api/users", authenticatedByTokenMiddleware(Users(container.UserStore)))
 	mux.Handle("/api/users/{user_id}", authenticatedByTokenMiddleware(User(container.UserStore)))
-	mux.Handle("/api/users/{user_id}/scopes", authenticatedByTokenMiddleware(UserScopes(container.UserStore)))
+	mux.Handle("/api/users/{user_id}/permissions", authenticatedByTokenMiddleware(UserPermissions(container.UserStore)))
 
 	mux.Handle("/api/clients", authenticatedByTokenMiddleware(Clients(container.ClientStore)))
 	mux.Handle("/api/clients/{client_id}", authenticatedByTokenMiddleware(Client(container.ClientStore)))
 
 	mux.Handle("/api/resource_servers", authenticatedByTokenMiddleware(ResourceServers(container.ResourceServerStore)))
 	mux.Handle("/api/resource_servers/{resource_server_id}", authenticatedByTokenMiddleware(ResourceServer(container.ResourceServerStore)))
+	mux.Handle("/api/resource_servers/{resource_server_id}/permissions", authenticatedByTokenMiddleware(ResourceServerPermissions(container.ResourceServerStore)))
+	mux.Handle("/api/resource_servers/{resource_server_id}/permissions/{permission_id}", authenticatedByTokenMiddleware(ResourceServerPermission(container.ResourceServerStore)))
 
 	mux.Handle("/api/roles", authenticatedByTokenMiddleware(Roles(container.RoleStore)))
 	mux.Handle("/api/roles/{role_id}", authenticatedByTokenMiddleware(Role(container.RoleStore)))
+	mux.Handle("/api/roles/{role_id}/permissions", authenticatedByTokenMiddleware(RolePermissions(container.RoleStore)))
 
 	mux.Handle("/", authenticatedBySessionMiddleware(container.OAuthProvider, container.SessionStore, HomePage()))
 	mux.Handle("/callback", sessionMiddleware(container.SessionStore, Callback(container.OAuthProvider, container.Settings, container.ClientStore)))
