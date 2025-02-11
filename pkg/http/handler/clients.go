@@ -17,22 +17,20 @@ import (
 	"github.com/google/uuid"
 )
 
+type responseBodyClient struct {
+	Id             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	Secret         string    `json:"secret"`
+	RedirectUris   []string  `json:"redirect_uris"`
+	IsConfidential bool      `json:"is_confidential"`
+	IsSystem       bool      `json:"is_system"`
+	LogoUrl        string    `json:"logo_url"`
+	CreatedAt      int64     `json:"created_at"`
+	UpdatedAt      int64     `json:"updated_at"`
+}
+
 func Clients(clientStore *store.ClientStore) http.Handler {
-	type responseBodyClient struct {
-		Id             uuid.UUID `json:"id"`
-		Name           string    `json:"name"`
-		Description    string    `json:"description"`
-		Secret         string    `json:"secret"`
-		IsSystem       bool      `json:"is_system"`
-		RedirectUrls   []string  `json:"redirect_urls"`
-		IsConfidential bool      `json:"is_confidential"`
-		LogoUrl        string    `json:"logo_url"`
-	}
-
-	type getResponseBody struct {
-		Clients []responseBodyClient `json:"clients"`
-	}
-
 	type postRequestBody struct {
 		Name           string   `json:"name"`
 		Description    string   `json:"description"`
@@ -53,28 +51,25 @@ func Clients(clientStore *store.ClientStore) http.Handler {
 						return
 					}
 
-					clients, err := clientStore.All(r.Context(), 10, 0)
+					clients, err := clientStore.All(r.Context())
 					if err != nil {
 						panic(err)
 					}
 
-					getResponseBody := getResponseBody{
-						Clients: make([]responseBodyClient, 0, len(clients)),
-					}
-
+					responseBody := make([]responseBodyClient, 0, len(clients))
 					for _, client := range clients {
-						getResponseBody.Clients = append(getResponseBody.Clients, responseBodyClient{
+						responseBody = append(responseBody, responseBodyClient{
 							Id:             client.Id,
 							Name:           client.Name,
 							Description:    client.Description,
 							Secret:         client.Secret,
-							RedirectUrls:   client.RedirectUriList(),
+							RedirectUris:   client.RedirectUriList(),
 							IsConfidential: client.IsConfidential,
 							LogoUrl:        client.LogoUrl,
 						})
 					}
 
-					encoding.Encode(w, http.StatusOK, getResponseBody)
+					encoding.Encode(w, http.StatusOK, responseBody)
 				}
 			case http.MethodPost:
 				{
@@ -117,7 +112,7 @@ func Clients(clientStore *store.ClientStore) http.Handler {
 						Description:    client.Description,
 						Secret:         client.Secret,
 						IsSystem:       client.IsSystem,
-						RedirectUrls:   client.RedirectUriList(),
+						RedirectUris:   client.RedirectUriList(),
 						IsConfidential: client.IsConfidential,
 						LogoUrl:        client.LogoUrl,
 					})
@@ -132,18 +127,6 @@ func Clients(clientStore *store.ClientStore) http.Handler {
 }
 
 func Client(clientStore *store.ClientStore) http.Handler {
-	type responseBodyClient struct {
-		Id             uuid.UUID `json:"id"`
-		Name           string    `json:"name"`
-		Description    string    `json:"description"`
-		Secret         string    `json:"secret"`
-		RedirectUrls   []string  `json:"redirect_urls"`
-		IsConfidential bool      `json:"is_confidential"`
-		LogoUrl        string    `json:"logo_url"`
-		CreatedAt      int64     `json:"created_at"`
-		UpdatedAt      int64     `json:"updated_at"`
-	}
-
 	type patchRequestBody struct {
 		Name           string   `json:"name"`
 		Description    string   `json:"description"`
@@ -183,7 +166,7 @@ func Client(clientStore *store.ClientStore) http.Handler {
 					Name:           client.Name,
 					Description:    client.Description,
 					Secret:         client.Secret,
-					RedirectUrls:   client.RedirectUriList(),
+					RedirectUris:   client.RedirectUriList(),
 					IsConfidential: client.IsConfidential,
 					LogoUrl:        client.LogoUrl,
 					CreatedAt:      client.CreatedAt,
@@ -211,6 +194,10 @@ func Client(clientStore *store.ClientStore) http.Handler {
 					}
 
 					panic(err)
+				}
+
+				if client.IsSystem {
+					panic(fmt.Errorf("cannot update system client"))
 				}
 
 				if requestBody.Name != "" {
@@ -248,7 +235,7 @@ func Client(clientStore *store.ClientStore) http.Handler {
 					Name:           client.Name,
 					Description:    client.Description,
 					Secret:         client.Secret,
-					RedirectUrls:   client.RedirectUriList(),
+					RedirectUris:   client.RedirectUriList(),
 					IsConfidential: client.IsConfidential,
 					LogoUrl:        client.LogoUrl,
 					CreatedAt:      client.CreatedAt,
@@ -263,6 +250,15 @@ func Client(clientStore *store.ClientStore) http.Handler {
 				if !slices.Contains(session.FromRequest(r).Token().Scope, scope.DeleteClients) {
 					w.WriteHeader(http.StatusForbidden)
 					return
+				}
+
+				client, err := clientStore.GetById(r.Context(), clientId)
+				if err != nil {
+					panic(err)
+				}
+
+				if client.IsSystem {
+					panic(fmt.Errorf("cannot update system client"))
 				}
 
 				if err := clientStore.DeleteById(r.Context(), clientId); err != nil {

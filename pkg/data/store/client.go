@@ -50,14 +50,14 @@ func (store *ClientStore) Update(ctx context.Context, client model.Client) error
 	return nil
 }
 
-func (store *ClientStore) All(ctx context.Context, limit, offset uint32) ([]model.Client, error) {
-	rows, err := store.db.QueryContext(ctx, "SELECT id, secret, name, description, is_system, is_confidential, logo_url, redirect_urls, created_at, updated_at FROM tbl_client LIMIT ? OFFSET ?;", limit, offset)
+func (store *ClientStore) All(ctx context.Context) ([]model.Client, error) {
+	rows, err := store.db.QueryContext(ctx, "SELECT id, secret, name, description, is_system, is_confidential, logo_url, redirect_urls, created_at, updated_at FROM tbl_client;")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	clients := make([]model.Client, 0, limit)
+	clients := make([]model.Client, 0)
 	for rows.Next() {
 		var client model.Client
 		if err := rows.Scan(&client.Id, &client.Secret, &client.Name, &client.Description, &client.IsSystem, &client.IsConfidential, &client.LogoUrl, &client.RedirectUrls, &client.CreatedAt, &client.UpdatedAt); err != nil {

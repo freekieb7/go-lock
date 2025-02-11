@@ -29,10 +29,6 @@ type responseBodyResourceServer struct {
 }
 
 func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handler {
-	type getResponseBody struct {
-		ResourceServers []responseBodyResourceServer `json:"resource_servers"`
-	}
-
 	type postRequestBody struct {
 		Id                       uuid.UUID `json:"id"`
 		Name                     string    `json:"name"`
@@ -58,10 +54,9 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 					panic(err)
 				}
 
-				var responseBody getResponseBody
-				responseBody.ResourceServers = make([]responseBodyResourceServer, 0, len(resourceServers))
+				responseBody := make([]responseBodyResourceServer, 0, len(resourceServers))
 				for _, resourceServer := range resourceServers {
-					responseBody.ResourceServers = append(responseBody.ResourceServers, responseBodyResourceServer{
+					responseBody = append(responseBody, responseBodyResourceServer{
 						Id:                       resourceServer.Id,
 						Url:                      resourceServer.Url,
 						Name:                     resourceServer.Name,
@@ -102,6 +97,10 @@ func ResourceServers(resourceServerStore *store.ResourceServerStore) http.Handle
 					SigningAlgorithm:         model.SigningAlgorithmRS256,
 					CreatedAt:                now,
 					UpdatedAt:                now,
+				}
+
+				if err := resourceServerStore.Create(r.Context(), resourceServer); err != nil {
+					panic(err)
 				}
 
 				encoding.Encode(w, http.StatusOK, responseBodyResourceServer{
@@ -192,6 +191,10 @@ func ResourceServer(resourceServerStore *store.ResourceServerStore) http.Handler
 					}
 				}
 
+				if resourceServer.IsSystem {
+					panic(fmt.Errorf("cannot update system resource server"))
+				}
+
 				if requestBody.Name != "" {
 					resourceServer.Name = requestBody.Name
 				}
@@ -239,7 +242,21 @@ func ResourceServer(resourceServerStore *store.ResourceServerStore) http.Handler
 					return
 				}
 
-				if err := resourceServerStore.DeleteById(r.Context(), resourceServerId); err != nil {
+				resourceServer, err := resourceServerStore.GetById(r.Context(), resourceServerId)
+				if err != nil {
+					if errors.Is(err, store.ErrResourceServerNotFound) {
+						w.WriteHeader(http.StatusOK)
+						return
+					}
+
+					panic(err)
+				}
+
+				if resourceServer.IsSystem {
+					panic(fmt.Errorf("cannot delete system resource server"))
+				}
+
+				if err := resourceServerStore.DeleteById(r.Context(), resourceServer.Id); err != nil {
 					panic(err)
 				}
 
@@ -255,13 +272,10 @@ func ResourceServer(resourceServerStore *store.ResourceServerStore) http.Handler
 
 func ResourceServerPermissions(resourceServerStore *store.ResourceServerStore) http.Handler {
 	type getReponseBodyPermissions struct {
-		Id          uuid.UUID `json:"id"`
-		Value       string    `json:"value"`
-		Description string    `json:"description"`
-	}
-
-	type getResponseBody struct {
-		Permissions []getReponseBodyPermissions `json:"permissions"`
+		Id               uuid.UUID `json:"id"`
+		ResourceServerId uuid.UUID `json:"resource_server_id"`
+		Value            string    `json:"value"`
+		Description      string    `json:"description"`
 	}
 
 	type postRequestBody struct {
@@ -271,9 +285,10 @@ func ResourceServerPermissions(resourceServerStore *store.ResourceServerStore) h
 	}
 
 	type postResponseBody struct {
-		Id          uuid.UUID `json:"id"`
-		Value       string    `json:"value"`
-		Description string    `json:"description"`
+		Id               uuid.UUID `json:"id"`
+		ResourceServerId uuid.UUID `json:"resource_server_id"`
+		Value            string    `json:"value"`
+		Description      string    `json:"description"`
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -291,18 +306,26 @@ func ResourceServerPermissions(resourceServerStore *store.ResourceServerStore) h
 					return
 				}
 
-				permissions, err := resourceServerStore.AllPermissions(r.Context(), resourceServerId)
+				resourceServer, err := resourceServerStore.GetById(r.Context(), resourceServerId)
+				if err != nil {
+					if errors.Is(err, store.ErrResourceServerNotFound) {
+						encoding.EncodeError(w, http.StatusNotFound, "Not found", fmt.Sprintf("Invalid resource ID : %s", resourceServerId))
+					}
+				}
+
+				permissions, err := resourceServerStore.AllPermissions(r.Context(), resourceServer.Id)
 				if err != nil {
 					panic(err)
 				}
 
-				var responseBody getResponseBody
-				responseBody.Permissions = make([]getReponseBodyPermissions, 0, len(permissions))
+				var responseBody []getReponseBodyPermissions
+				responseBody = make([]getReponseBodyPermissions, 0, len(permissions))
 				for _, permission := range permissions {
-					responseBody.Permissions = append(responseBody.Permissions, getReponseBodyPermissions{
-						Id:          permission.Id,
-						Value:       permission.Value,
-						Description: permission.Description,
+					responseBody = append(responseBody, getReponseBodyPermissions{
+						Id:               permission.Id,
+						ResourceServerId: permission.ResourceServerId,
+						Value:            permission.Value,
+						Description:      permission.Description,
 					})
 				}
 
@@ -333,9 +356,10 @@ func ResourceServerPermissions(resourceServerStore *store.ResourceServerStore) h
 				}
 
 				encoding.Encode(w, http.StatusCreated, postResponseBody{
-					Id:          permission.Id,
-					Value:       permission.Value,
-					Description: permission.Description,
+					Id:               permission.Id,
+					ResourceServerId: permission.ResourceServerId,
+					Value:            permission.Value,
+					Description:      permission.Description,
 				})
 			}
 		}
@@ -354,6 +378,7 @@ func ResourceServerPermission(resourceServerStore *store.ResourceServerStore) ht
 		Value            string    `json:"value"`
 		Description      string    `json:"description"`
 	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resourceServerId, err := uuid.Parse(r.PathValue("resource_server_id"))
 		if err != nil {

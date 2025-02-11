@@ -92,7 +92,7 @@ func (store *ResourceServerStore) Update(ctx context.Context, resourceServer mod
 }
 
 func (store *ResourceServerStore) DeleteById(ctx context.Context, id uuid.UUID) error {
-	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_resource_server WHERE id = ? AND is_system = false;`, id)
+	_, err := store.db.ExecContext(ctx, `DELETE FROM tbl_resource_server WHERE id = ?;`, id)
 	if err != nil {
 		return err
 	}

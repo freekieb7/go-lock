@@ -31,10 +31,6 @@ type responseBodyUser struct {
 }
 
 func Users(userStore *store.UserStore) http.Handler {
-	type getResponseBody struct {
-		Users []responseBodyUser
-	}
-
 	type postRequestBody struct {
 		Id            uuid.UUID `json:"id"`
 		Email         string    `json:"email"`
@@ -92,10 +88,9 @@ func Users(userStore *store.UserStore) http.Handler {
 						return
 					}
 
-					var responseBody getResponseBody
-					responseBody.Users = make([]responseBodyUser, 0, len(users))
+					responseBody := make([]responseBodyUser, 0, len(users))
 					for _, user := range users {
-						responseBody.Users = append(responseBody.Users, responseBodyUser{
+						responseBody = append(responseBody, responseBodyUser{
 							Id:            user.Id,
 							Email:         user.Email,
 							Username:      user.Username,
