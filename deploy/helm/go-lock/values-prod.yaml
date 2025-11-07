@@ -1,0 +1,104 @@
+# Production values for go-lock
+# Override default values for production deployment
+
+replicaCount: 5
+
+image:
+  repository: your-registry.com/go-lock
+  tag: ""  # Will use Chart.AppVersion
+  pullPolicy: Always
+
+server:
+  environment: "production"
+
+database:
+  # Use external secret management in production
+  url: "postgres://golock_user:PLACEHOLDER@postgresql-cluster:5432/golock_prod?sslmode=require"
+  maxOpenConns: 50
+  maxIdleConns: 10
+  connMaxLifetime: "10m"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rate-limit: "200"
+    nginx.ingress.kubernetes.io/rate-limit-burst: "50"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+  hosts:
+    - host: auth.yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: go-lock-tls
+      hosts:
+        - auth.yourdomain.com
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 5
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 60
+  targetMemoryUtilizationPercentage: 70
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - go-lock
+      topologyKey: kubernetes.io/hostname
+
+nodeSelector:
+  node-type: "application"
+
+tolerations:
+  - key: "application-node"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+
+security:
+  enableHSTS: true
+  hstsMaxAge: 63072000  # 2 years
+  hstsIncludeSubdomains: true
+
+rateLimit:
+  enabled: true
+  oauthRequests: 20
+  apiRequests: 200
+  publicRequests: 100
+  adminRequests: 10
+
+# Use external secrets in production
+externalSecrets:
+  enabled: true
+  # Configure based on your secret management solution
+
+# Production monitoring
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 3

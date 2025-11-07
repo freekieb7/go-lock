@@ -22,6 +22,9 @@
 # Go workspace file
 go.work
 
+# Environment files with secrets
+.env
+
 /tmp/*
 !/tmp/.gitkeep
 

@@ -1,0 +1,222 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-lock
+  namespace: default
+  labels:
+    app: go-lock
+    version: v1.0.0
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: go-lock
+  template:
+    metadata:
+      labels:
+        app: go-lock
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/health"
+    spec:
+      serviceAccountName: go-lock
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+      containers:
+      - name: go-lock
+        image: go-lock:latest
+        imagePullPolicy: IfNotPresent
+        args: ["serve"]
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: SERVER_PORT
+          value: "8080"
+        - name: SERVER_ENVIRONMENT
+          value: "production"
+        - name: SERVER_WRITE_TIMEOUT
+          value: "15s"
+        - name: SERVER_READ_TIMEOUT
+          value: "15s"
+        - name: SERVER_IDLE_TIMEOUT
+          value: "60s"
+        - name: SERVER_MAX_HEADER_BYTES
+          value: "1048576"
+        - name: DB_URL
+          valueFrom:
+            secretKeyRef:
+              name: go-lock-secrets
+              key: database-url
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: go-lock-secrets
+              key: api-key
+        - name: DB_MAX_OPEN_CONNS
+          value: "25"
+        - name: DB_MAX_IDLE_CONNS
+          value: "5"
+        - name: DB_CONN_MAX_LIFETIME
+          value: "5m"
+        - name: DB_CONN_MAX_IDLE_TIME
+          value: "5m"
+        - name: SECURITY_ENABLE_HSTS
+          value: "true"
+        - name: SECURITY_HSTS_MAX_AGE
+          value: "31536000"
+        - name: SECURITY_HSTS_INCLUDE_SUBDOMAINS
+          value: "true"
+        - name: RATE_LIMIT_ENABLED
+          value: "true"
+        - name: RATE_LIMIT_OAUTH_REQUESTS
+          value: "10"
+        - name: RATE_LIMIT_API_REQUESTS
+          value: "100"
+        - name: RATE_LIMIT_PUBLIC_REQUESTS
+          value: "60"
+        - name: RATE_LIMIT_ADMIN_REQUESTS
+          value: "5"
+        - name: RATE_LIMIT_WINDOW_DURATION
+          value: "1m"
+        - name: BASE_URL
+          value: "https://auth.example.com"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+            httpHeaders:
+            - name: Accept
+              value: application/json
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+            httpHeaders:
+            - name: Accept
+              value: application/json
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 10
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: migrations
+          mountPath: /app/internal/database/migrations
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: migrations
+        configMap:
+          name: go-lock-migrations
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-lock
+  namespace: default
+  labels:
+    app: go-lock
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: 443
+    targetPort: http
+    protocol: TCP
+    name: https
+  selector:
+    app: go-lock
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: go-lock
+  namespace: default
+  labels:
+    app: go-lock
+automountServiceAccountToken: false
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: go-lock
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: go-lock
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    - podSelector:
+        matchLabels:
+          app: nginx-ingress
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 53   # DNS
+    - protocol: UDP
+      port: 53   # DNS

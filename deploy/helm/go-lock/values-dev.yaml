@@ -1,0 +1,44 @@
+# Development values for go-lock
+# Override default values for local development
+
+replicaCount: 1
+
+image:
+  repository: go-lock
+  tag: "latest"
+  pullPolicy: Never  # Use local images
+
+server:
+  environment: "development"
+  baseURL: "http://localhost:8080"
+
+database:
+  url: "postgres://postgres:password@localhost:5432/golock_dev?sslmode=disable"
+
+ingress:
+  enabled: false
+
+autoscaling:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+security:
+  enableHSTS: false
+
+secrets:
+  apiKey: "dev-api-key-not-secure"
+  csrfSecret: "dev-csrf-secret-32-characters-xx"
+  sessionSecret: "dev-session-secret-32-chars-xxx"
+
+migrations:
+  enabled: true
+
+podDisruptionBudget:
+  enabled: false

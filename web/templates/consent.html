@@ -1,0 +1,58 @@
+{{define "title" }}Consent{{ end }}
+
+{{define "content"}}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Authorize Application</h2>
+                </div>
+                <div class="card-body">
+                    {{ if .Client }}
+                    <div class="mb-4">
+                        <h5>{{ .Client.Name }}</h5>
+                        {{ if .Client.Description }}
+                        <p class="text-muted">{{ .Client.Description }}</p>
+                        {{ end }}
+                    </div>
+                    {{ end }}
+                    
+                    <p>This application is requesting the following permissions:</p>
+                    <ul class="list-group list-group-flush mb-4">
+                        {{ range $scope, $description := .Scopes }}
+                        <li class="list-group-item">
+                            {{ if $description }}
+                            {{ $description }}
+                            {{ else }}
+                            {{ $scope }}
+                            {{ end }}
+                        </li>
+                        {{ end }}
+                    </ul>
+                    
+                    <p>Do you want to grant these permissions to this application?</p>
+                    
+                    <form method="post">
+                        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+                        <div class="d-grid gap-2">
+                            <button type="submit" name="action" value="authorize" class="btn btn-success">
+                                Grant Permissions
+                            </button>
+                            <button type="submit" name="action" value="deny" class="btn btn-outline-secondary">
+                                Deny
+                            </button>
+                        </div>
+                    </form>
+                    
+                    {{ if .Error }}
+                    <div class="alert alert-danger mt-3" role="alert">
+                        {{ .Error }}
+                    </div>
+                    {{ end }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}

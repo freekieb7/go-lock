@@ -1,0 +1,156 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "go-lock.fullname" . }}
+  labels:
+    {{- include "go-lock.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "go-lock.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "go-lock.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "go-lock.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.port }}
+              protocol: TCP
+          env:
+            # Server configuration
+            - name: SERVER_PORT
+              value: {{ .Values.server.port | quote }}
+            - name: SERVER_ENVIRONMENT
+              value: {{ .Values.server.environment | quote }}
+            - name: SERVER_WRITE_TIMEOUT
+              value: {{ .Values.server.writeTimeout | quote }}
+            - name: SERVER_READ_TIMEOUT
+              value: {{ .Values.server.readTimeout | quote }}
+            - name: SERVER_IDLE_TIMEOUT
+              value: {{ .Values.server.idleTimeout | quote }}
+            - name: BASE_URL
+              value: {{ include "go-lock.baseURL" . | quote }}
+            
+            # Database configuration
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "go-lock.fullname" . }}-secrets
+                  key: database-url
+            - name: DB_MAX_OPEN_CONNS
+              value: {{ .Values.database.maxOpenConns | quote }}
+            - name: DB_MAX_IDLE_CONNS
+              value: {{ .Values.database.maxIdleConns | quote }}
+            - name: DB_CONN_MAX_LIFETIME
+              value: {{ .Values.database.connMaxLifetime | quote }}
+            - name: DB_CONN_MAX_IDLE_TIME
+              value: {{ .Values.database.connMaxIdleTime | quote }}
+            
+            # Security configuration
+            - name: SECURITY_ENABLE_HSTS
+              value: {{ .Values.security.enableHSTS | quote }}
+            - name: SECURITY_HSTS_MAX_AGE
+              value: {{ .Values.security.hstsMaxAge | quote }}
+            - name: SECURITY_HSTS_INCLUDE_SUBDOMAINS
+              value: {{ .Values.security.hstsIncludeSubdomains | quote }}
+            
+            # Rate limiting
+            - name: RATE_LIMIT_ENABLED
+              value: {{ .Values.rateLimit.enabled | quote }}
+            - name: RATE_LIMIT_OAUTH_REQUESTS
+              value: {{ .Values.rateLimit.oauthRequests | quote }}
+            - name: RATE_LIMIT_API_REQUESTS
+              value: {{ .Values.rateLimit.apiRequests | quote }}
+            - name: RATE_LIMIT_PUBLIC_REQUESTS
+              value: {{ .Values.rateLimit.publicRequests | quote }}
+            - name: RATE_LIMIT_ADMIN_REQUESTS
+              value: {{ .Values.rateLimit.adminRequests | quote }}
+            - name: RATE_LIMIT_WINDOW_DURATION
+              value: {{ .Values.rateLimit.windowDuration | quote }}
+            
+            # Secrets
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "go-lock.fullname" . }}-secrets
+                  key: api-key
+            - name: CSRF_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "go-lock.fullname" . }}-secrets
+                  key: csrf-secret
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "go-lock.fullname" . }}-secrets
+                  key: session-secret
+            
+            # Cache configuration
+            - name: CACHE_ENABLED
+              value: {{ .Values.cache.enabled | quote }}
+            - name: REDIS_ADDR
+              value: {{ .Values.cache.redis.addr | quote }}
+            - name: REDIS_PASSWORD
+              value: {{ .Values.cache.redis.password | quote }}
+            - name: REDIS_DB
+              value: {{ .Values.cache.redis.db | quote }}
+            - name: REDIS_POOL_SIZE
+              value: {{ .Values.cache.redis.poolSize | quote }}
+            - name: CACHE_DEFAULT_TTL
+              value: {{ .Values.cache.defaultTTL | quote }}
+            - name: CACHE_SESSION_TTL
+              value: {{ .Values.cache.sessionTTL | quote }}
+            - name: CACHE_JWKS_TTL
+              value: {{ .Values.cache.jwksTTL | quote }}
+          
+          {{- if .Values.healthCheck.enabled }}
+          livenessProbe:
+            {{- toYaml .Values.healthCheck.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.healthCheck.readinessProbe | nindent 12 }}
+          {{- end }}
+          
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+      
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+      
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

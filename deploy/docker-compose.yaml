@@ -1,0 +1,39 @@
+name: go-lock
+services:
+  migrate:
+    build:
+      context: ..
+      dockerfile: ./build/Dockerfile
+    environment:
+      DB_URL: postgres://postgres:postgres@db:5432/golock?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    command: [ "migrate", "up" ]
+    restart: "no"
+
+  db: 
+    image: postgres:18.0-alpine3.22
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: golock
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d golock" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:8.2.3-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

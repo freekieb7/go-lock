@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: go-lock-secrets
+  namespace: default
+  labels:
+    app: go-lock
+type: Opaque
+data:
+  # Base64 encoded values - replace with actual values
+  database-url: cG9zdGdyZXM6Ly91c2VybmFtZTpwYXNzd29yZEBwb3N0Z3Jlc3FsOjU0MzIvZ29sb2NrP3NzbG1vZGU9ZGlzYWJsZQ==
+  api-key: eW91cl9zZWN1cmVfYXBpX2tleV9oZXJl
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: go-lock-migrations
+  namespace: default
+  labels:
+    app: go-lock
+data:
+  # Migration files would be added here
+  # This is a placeholder - in production you'd include actual migration files
+  README.md: |
+    This ConfigMap should contain your database migration files.
+    
+    To populate:
+    kubectl create configmap go-lock-migrations \
+      --from-file=internal/database/migrations/ \
+      --namespace=default
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: go-lock-config
+  namespace: default
+  labels:
+    app: go-lock
+data:
+  # Non-sensitive configuration
+  server.port: "8080"
+  server.environment: "production"
+  server.write-timeout: "15s"
+  server.read-timeout: "15s"
+  server.idle-timeout: "60s"
+  
+  # Database connection pooling
+  db.max-open-conns: "25"
+  db.max-idle-conns: "5"
+  db.conn-max-lifetime: "5m"
+  db.conn-max-idle-time: "5m"
+  
+  # Security settings
+  security.enable-hsts: "true"
+  security.hsts-max-age: "31536000"
+  security.hsts-include-subdomains: "true"
+  
+  # Rate limiting
+  rate-limit.enabled: "true"
+  rate-limit.oauth-requests: "10"
+  rate-limit.api-requests: "100"
+  rate-limit.public-requests: "60"
+  rate-limit.admin-requests: "5"
+  rate-limit.window-duration: "1m"

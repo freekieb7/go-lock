@@ -1,0 +1,637 @@
+openapi: 3.0.3
+info:
+  title: Go-Lock OAuth2/OpenID Connect Server
+  description: |
+    A comprehensive OAuth2 and OpenID Connect authorization server built in Go.
+    
+    This server provides:
+    - OAuth2 authorization code flow with PKCE support
+    - OpenID Connect authentication 
+    - JWT token generation and validation
+    - Client and user management APIs
+    - Resource server protection
+    
+    ## Authentication
+    
+    The API uses several authentication methods:
+    - **API Key**: For administrative endpoints (Header: `X-API-Key`)
+    - **Bearer Token**: For protected resources (Header: `Authorization: Bearer <token>`)
+    - **Basic Auth**: For OAuth2 client authentication
+    - **Session**: For web UI endpoints (Cookie-based)
+    
+    ## Rate Limiting
+    
+    All endpoints are subject to rate limiting:
+    - OAuth endpoints: 10 requests/minute
+    - API endpoints: 100 requests/minute  
+    - Public endpoints: 60 requests/minute
+    - Admin endpoints: 5 requests/minute
+    
+  version: 1.0.0
+  contact:
+    name: Go-Lock API Support
+    url: https://github.com/freekieb7/go-lock
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://auth.example.com
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+  - BasicAuth: []
+
+paths:
+  # OAuth2 Endpoints
+  /oauth/authorize:
+    get:
+      tags:
+        - OAuth2
+      summary: Authorization endpoint
+      description: |
+        OAuth2 authorization endpoint that initiates the authorization code flow.
+        Supports PKCE (Proof Key for Code Exchange) for enhanced security.
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The client identifier
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+          description: Client redirect URI
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [code]
+          description: OAuth2 response type (only 'code' supported)
+        - name: scope
+          in: query
+          schema:
+            type: string
+            default: openid
+          description: Requested scopes (space-separated)
+        - name: state
+          in: query
+          schema:
+            type: string
+          description: Client state for CSRF protection
+        - name: code_challenge
+          in: query
+          schema:
+            type: string
+          description: PKCE code challenge
+        - name: code_challenge_method
+          in: query
+          schema:
+            type: string
+            enum: [S256]
+          description: PKCE code challenge method
+        - name: nonce
+          in: query
+          schema:
+            type: string
+          description: OpenID Connect nonce parameter
+      responses:
+        '302':
+          description: Redirect to authorization UI or back to client
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      security: []
+
+  /oauth/token:
+    post:
+      tags:
+        - OAuth2
+      summary: Token endpoint
+      description: |
+        OAuth2 token endpoint for exchanging authorization codes for access tokens,
+        refreshing tokens, and client credentials flow.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  enum: [authorization_code, refresh_token, client_credentials]
+                  description: OAuth2 grant type
+                code:
+                  type: string
+                  description: Authorization code (for authorization_code grant)
+                redirect_uri:
+                  type: string
+                  format: uri
+                  description: Client redirect URI (for authorization_code grant)
+                refresh_token:
+                  type: string
+                  description: Refresh token (for refresh_token grant)
+                code_verifier:
+                  type: string
+                  description: PKCE code verifier
+                scope:
+                  type: string
+                  description: Requested scopes (for client_credentials grant)
+              required:
+                - grant_type
+      responses:
+        '200':
+          description: Successful token response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      security:
+        - BasicAuth: []
+
+  # OpenID Connect Endpoints
+  /.well-known/openid-configuration:
+    get:
+      tags:
+        - OpenID Connect
+      summary: OpenID Connect Discovery
+      description: Returns OpenID Connect discovery metadata
+      responses:
+        '200':
+          description: OpenID Connect configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenIDConfiguration'
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=3600"
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security: []
+
+  /.well-known/jwks.json:
+    get:
+      tags:
+        - OpenID Connect
+      summary: JSON Web Key Set
+      description: Returns the public keys used to verify JWT tokens
+      responses:
+        '200':
+          description: JSON Web Key Set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKSResponse'
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=600"
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security: []
+
+  # Health Check
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      description: Returns the health status of the service
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+      security: []
+
+  # Admin API - Users
+  /api/users:
+    get:
+      tags:
+        - Users
+      summary: List users
+      description: Retrieve a paginated list of users
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search term for filtering users
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      security:
+        - ApiKeyAuth: []
+
+    post:
+      tags:
+        - Users
+      summary: Create user
+      description: Create a new user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      security:
+        - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for administrative access
+    
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token
+    
+    BasicAuth:
+      type: http
+      scheme: basic
+      description: Client credentials for OAuth2
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number for pagination
+    
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Number of items per page
+
+  schemas:
+    # OAuth2 Schemas
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: The access token
+        token_type:
+          type: string
+          enum: [Bearer]
+          description: Token type
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+        refresh_token:
+          type: string
+          description: Refresh token (if applicable)
+        scope:
+          type: string
+          description: Granted scopes
+        id_token:
+          type: string
+          description: OpenID Connect ID token (if requested)
+      required:
+        - access_token
+        - token_type
+        - expires_in
+
+    # OpenID Connect Schemas
+    OpenIDConfiguration:
+      type: object
+      properties:
+        issuer:
+          type: string
+          format: uri
+        authorization_endpoint:
+          type: string
+          format: uri
+        token_endpoint:
+          type: string
+          format: uri
+        jwks_uri:
+          type: string
+          format: uri
+        userinfo_endpoint:
+          type: string
+          format: uri
+        response_types_supported:
+          type: array
+          items:
+            type: string
+        subject_types_supported:
+          type: array
+          items:
+            type: string
+        id_token_signing_alg_values_supported:
+          type: array
+          items:
+            type: string
+        scopes_supported:
+          type: array
+          items:
+            type: string
+        claims_supported:
+          type: array
+          items:
+            type: string
+
+    JWKSResponse:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/JWK'
+
+    JWK:
+      type: object
+      properties:
+        kty:
+          type: string
+          description: Key type
+        use:
+          type: string
+          description: Key use
+        kid:
+          type: string
+          description: Key ID
+        n:
+          type: string
+          description: RSA modulus
+        e:
+          type: string
+          description: RSA exponent
+
+    # User Management Schemas
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+      required:
+        - id
+        - username
+        - email
+        - created_at
+        - active
+
+    CreateUserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9_-]+$'
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+        active:
+          type: boolean
+          default: true
+      required:
+        - username
+        - email
+        - password
+
+    # System Schemas
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [ok, error]
+            services:
+              type: object
+      required:
+        - status
+        - timestamp
+
+    # Utility Schemas
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+        has_next:
+          type: boolean
+        has_prev:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: HTTP status code
+        status:
+          type: string
+          enum: [error]
+        message:
+          type: string
+          description: Human-readable error message
+        data:
+          type: object
+          properties:
+            error_code:
+              type: string
+              description: Machine-readable error code
+            details:
+              type: object
+              description: Additional error details
+      required:
+        - code
+        - status
+        - message
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid parameters or missing required fields
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    Unauthorized:
+      description: Unauthorized - authentication required or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    NotFound:
+      description: Not found - resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    Conflict:
+      description: Conflict - resource already exists or operation conflicts
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    RateLimited:
+      description: Too many requests - rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Request limit per window
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Remaining requests in current window
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Time when the rate limit resets (Unix timestamp)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+tags:
+  - name: OAuth2
+    description: OAuth2 authorization server endpoints
+  - name: OpenID Connect
+    description: OpenID Connect authentication endpoints
+  - name: Users
+    description: User management endpoints (Admin API)
+  - name: Clients
+    description: OAuth2 client management endpoints (Admin API)
+  - name: System
+    description: System health and monitoring endpoints

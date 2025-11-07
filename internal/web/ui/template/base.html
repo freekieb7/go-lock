@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <title>{{template "title" . }}</title>
+        <!-- Permissions Policy to handle unsupported features -->
+        <meta http-equiv="Permissions-Policy" content="clipboard-write=()"/>
+        <!-- Favicon -->
+        <link rel="icon" type="image/x-icon" href="/static/favicon.ico"/>
+        <!-- Local CSS files -->
+        <link rel="stylesheet" href="/static/css/bootstrap-5.3.8.min.css"/>
+        <link rel="stylesheet" href="/static/css/bootstrap-icons-1.13.1.min.css"/>
+        <link rel="stylesheet" href="/static/css/stylesheet.css"/>
+    </head>
+    <body class="bg-light">
+        {{ template "content" . }}
+        <!-- Local JavaScript files -->
+        <script src="/static/js/bootstrap-5.3.8.bundle.min.js"></script>
+    </body>
+</html>

@@ -1,0 +1,11 @@
+DROP TABLE tbl_refresh_token;
+DROP TABLE IF EXISTS tbl_granted_scope;
+DROP TABLE IF EXISTS tbl_session;
+DROP TABLE IF EXISTS tbl_authorization_code;
+DROP TABLE IF EXISTS tbl_access_token;
+DROP TABLE IF EXISTS tbl_permission;
+DROP TABLE IF EXISTS tbl_scope;
+DROP TABLE IF EXISTS tbl_resource_server;
+DROP TABLE IF EXISTS tbl_client;
+DROP TABLE IF EXISTS tbl_user;
+DROP TABLE IF EXISTS tbl_account;

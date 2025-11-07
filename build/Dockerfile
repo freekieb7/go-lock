@@ -1,63 +1,34 @@
-# syntax=docker/dockerfile:1
+# ---- Build stage ----
+FROM golang:1.25.4-alpine AS builder
+WORKDIR /app
 
-# ----------------------------------------------
-# setup stage
-# ----------------------------------------------
-FROM golang:1.23-alpine AS setup-stage
+# Cache deps
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source
+COPY . .
+
+# Build static binary for linux
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -o golock ./cmd/main.go
+
+# ---- Runtime stage ----
+# Distroless for Kubernetes (has certificates + minimal attack surface)
+FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /app
 
-RUN go env -w GOCACHE=/go-cache
-RUN go env -w GOMODCACHE=/gomod-cache
+# Copy binary (web assets are embedded)
+COPY --from=builder /app/golock .
+COPY --from=builder /app/internal/database/migrations ./internal/database/migrations
 
-RUN apk --no-cache add \
-    sqlite \
-    gcc \
-    g++ 
-
-COPY cmd ./cmd
-COPY pkg ./pkg
-COPY go.mod go.sum ./
-
-# ----------------------------------------------
-# build stage
-# ----------------------------------------------
-FROM setup-stage AS build-stage
-
-# Linkmode enabled use on scratch and distroless images
-RUN --mount=type=cache,target=/gomod-cache --mount=type=cache,target=/go-cache \
-   go build \
-   -o /go-lock \
-   -a -ldflags '-linkmode external -extldflags "-static"' \
-   cmd/main.go
-
-# ----------------------------------------------
-# test stage
-# ----------------------------------------------
-FROM setup-stage AS test-stage
-RUN go test -v ./...
-
-# ----------------------------------------------
-# development stage
-# ----------------------------------------------
-FROM setup-stage AS development-stage
-
-# RUN go install github.com/a-h/templ/cmd/templ@latest
-RUN go install github.com/air-verse/air@latest
-
+# Expose
 EXPOSE 8080
 
-CMD ["air", "-c", "third_party/.air.toml"]
+# Run as non-root by default
+USER nonroot:nonroot
 
-# ----------------------------------------------
-# production stage
-# ----------------------------------------------
-FROM gcr.io/distroless/base-debian12 AS production-stage
-
-WORKDIR /
-
-COPY --from=build-stage /go-lock /
-
-EXPOSE 8080
-
-ENTRYPOINT ["/go-lock"]
+# No shell - must use ENTRYPOINT
+ENTRYPOINT ["/app/golock"]
